@@ -136,7 +136,55 @@ networks:
   botica_net:
     driver: bridge
 
-6. Flujo de Git y Simulación de Entorno RealPara trabajar en equipo remoto sin colisiones:1. Convención de Ramasmain: Producción. Solo se toca mediante Pull Requests desde develop.develop: Integración continua. Aquí converge el trabajo del equipo.Ramas de trabajo:feature/<modulo>-<descripcion> (ej. feature/pos-barcode-listener, feature/fefo-deduction-logic).fix/<descripcion> (ej. fix/lote-stock-negative).2. Estándar de Commits (Conventional Commits)feat: Nueva funcionalidad para el usuario.fix: Solución a un error reportado.refactor: Reestructuración de código sin alterar comportamiento.test: Adición o corrección de pruebas unitarias/integración.docs: Cambios exclusivamente en documentación o diagramas.3. Protocolo de Integración DiariaAntes de iniciar la jornada:Bashgit checkout develop
+6. Flujo de Git y Simulación de Entorno Real
+Para trabajar en equipo remoto sin colisiones:
+
+1. Convención de Ramas
+main: Producción. Solo se toca mediante Pull Requests desde develop.
+
+develop: Integración continua. Aquí converge el trabajo del equipo.
+
+Ramas de trabajo:
+
+feature/<modulo>-<descripcion> (ej. feature/pos-barcode-listener, feature/fefo-deduction-logic).
+
+fix/<descripcion> (ej. fix/lote-stock-negative).
+
+2. Estándar de Commits (Conventional Commits)
+feat: Nueva funcionalidad para el usuario.
+
+fix: Solución a un error reportado.
+
+refactor: Reestructuración de código sin alterar comportamiento.
+
+test: Adición o corrección de pruebas unitarias/integración.
+
+docs: Cambios exclusivamente en documentación o diagramas.
+
+3. Protocolo de Integración Diaria
+Antes de iniciar la jornada:
+
+Bash
+git checkout develop
 git pull origin develop
 git checkout -b feature/nombre-tarea
-Al terminar la tarea: subir la rama y abrir el Pull Request hacia develop.Revisión obligatoria: El compañero debe revisar los cambios, validar que no rompa la estructura de Docker ni las migraciones, y aprobar el PR. Se fusiona usando Squash and Merge.7. Módulo de Machine Learning (Estrategia Operativa)Problema de Arranque en Frío (Cold Start): En el lanzamiento de la botica no habrá datos digitales históricos.Generación de Datos Sintéticos: Se usará el script scripts/generate_fake_data.py para inyectar 12 meses de ventas simuladas en PostgreSQL para calibrar y testear los modelos.Features Principales:Ventas históricas agrupadas por día y semana.Lags temporales ($t-7$, $t-14$, $t-30$).Indicador de día de la semana y estacionalidad mensual.Días restantes para el vencimiento del lote activo.Salida del Modelo: Un endpoint /api/v1/ml/reorder-suggestions que devuelva una lista priorizada de SKUs que entrarán en rotación crítica en los siguientes 15 días, indicando la cantidad exacta sugerida a pedir a las droguerías.
+Al terminar la tarea: subir la rama y abrir el Pull Request hacia develop.
+
+Revisión obligatoria: El compañero debe revisar los cambios, validar que no rompa la estructura de Docker ni las migraciones, y aprobar el PR. Se fusiona usando Squash and Merge.
+
+7. Módulo de Machine Learning (Estrategia Operativa)
+Problema de Arranque en Frío (Cold Start): En el lanzamiento de la botica no habrá datos digitales históricos.
+
+Generación de Datos Sintéticos: Se usará el script scripts/generate_fake_data.py para inyectar 12 meses de ventas simuladas en PostgreSQL para calibrar y testear los modelos.
+
+Features Principales:
+
+Ventas históricas agrupadas por día y semana.
+
+Lags temporales ($t-7$, $t-14$, $t-30$).
+
+Indicador de día de la semana y estacionalidad mensual.
+
+Días restantes para el vencimiento del lote activo.
+
+Salida del Modelo: Un endpoint /api/v1/ml/reorder-suggestions que devuelva una lista priorizada de SKUs que entrarán en rotación crítica en los siguientes 15 días, indicando la cantidad exacta sugerida a pedir a las droguerías.
