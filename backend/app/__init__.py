@@ -1,0 +1,1 @@
+"""Botica POS Backend Package."""
