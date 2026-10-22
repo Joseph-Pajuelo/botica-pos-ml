@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.exceptions import BoticaDomainError
 
 
 @asynccontextmanager
@@ -26,6 +29,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(BoticaDomainError)
+async def botica_domain_exception_handler(
+    request: Request, exc: BoticaDomainError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.codigo_http,
+        content={"detail": exc.mensaje},
+    )
+
+
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 @app.get(f"{settings.API_V1_STR}/health", tags=["Health"])

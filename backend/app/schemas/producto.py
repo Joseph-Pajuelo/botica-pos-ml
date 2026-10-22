@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,3 +45,17 @@ class ProductoRead(ProductoBase):
     actualizado_en: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProductoPOSRead(ProductoRead):
+    """Respuesta enriquecida para lectura rápida de código de barras en el POS (< 100ms)."""
+
+    stock_total_vigente: int = Field(
+        default=0, description="Suma de unidades mínimas en lotes no vencidos"
+    )
+    proximo_vencimiento: Optional[date] = Field(
+        default=None, description="Fecha de vencimiento del lote FEFO activo más próximo"
+    )
+    lote_fefo_numero: Optional[str] = Field(
+        default=None, description="Número del lote que se descontará primero bajo regla FEFO"
+    )
