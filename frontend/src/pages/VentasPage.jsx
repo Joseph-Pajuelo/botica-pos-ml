@@ -11,6 +11,8 @@ import {
   Calendar,
   Layers,
   AlertTriangle,
+  BarChart3,
+  PieChart,
 } from 'lucide-react'
 import { posApi, productosApi, getErrorMessage } from '../services/api'
 import { StatusBadge, ThermalTicket, Modal } from '../components'
@@ -77,13 +79,16 @@ export function VentasPage() {
     })
   }, [ventas, filtroPago, busqueda, productosMap])
 
-  // KPIs de Caja y Ventas
+  // KPIs y analítica visual de Caja y Ventas
   const metricas = useMemo(() => {
     let totalGeneral = 0
     let totalEfectivo = 0
     let totalDigital = 0
     let totalTarjeta = 0
     let totalUnidades = 0
+
+    const porProducto = {}
+    const porPresentacion = { CAJA: 0, BLISTER: 0, UNIDAD: 0 }
 
     ventasFiltradas.forEach((v) => {
       const monto = Number(v.total || 0)
@@ -93,9 +98,31 @@ export function VentasPage() {
       if (v.metodo_pago === 'TARJETA') totalTarjeta += monto
 
       ;(v.detalles || []).forEach((d) => {
-        totalUnidades += Number(d.cantidad_unidades || 0)
+        const u = Number(d.cantidad_unidades || 0)
+        const sub = Number(d.subtotal || 0)
+        totalUnidades += u
+        porPresentacion[d.tipo_presentacion] =
+          (porPresentacion[d.tipo_presentacion] || 0) + sub
+
+        const pid = d.producto_id
+        if (!porProducto[pid]) {
+          porProducto[pid] = {
+            producto_id: pid,
+            nombre: productosMap[pid]?.nombre || `Medicamento #${pid}`,
+            importe: 0,
+            unidades: 0,
+          }
+        }
+        porProducto[pid].importe += sub
+        porProducto[pid].unidades += u
       })
     })
+
+    const topProductos = Object.values(porProducto)
+      .sort((a, b) => b.importe - a.importe)
+      .slice(0, 5)
+
+    const basePct = Math.max(totalGeneral, 0.01)
 
     return {
       cantidadVentas: ventasFiltradas.length,
@@ -103,9 +130,14 @@ export function VentasPage() {
       totalEfectivo: +totalEfectivo.toFixed(2),
       totalDigital: +totalDigital.toFixed(2),
       totalTarjeta: +totalTarjeta.toFixed(2),
+      pctEfectivo: Math.round((totalEfectivo / basePct) * 100),
+      pctDigital: Math.round((totalDigital / basePct) * 100),
+      pctTarjeta: Math.round((totalTarjeta / basePct) * 100),
       totalUnidades,
+      topProductos,
+      porPresentacion,
     }
-  }, [ventasFiltradas])
+  }, [ventasFiltradas, productosMap])
 
   return (
     <div className="space-y-6">
@@ -116,7 +148,7 @@ export function VentasPage() {
             Historial de Ventas y Arqueo de Caja
           </h1>
           <p className="mt-1 text-[14px] text-slate">
-            Registro auditable de comprobantes emitidos, desglose por medio de pago, lotes FEFO descontados y reimpresión térmica.
+            Registro auditable de comprobantes emitidos, analítica de medios de pago, lotes FEFO descontados y reimpresión térmica.
           </p>
         </div>
 
@@ -171,7 +203,7 @@ export function VentasPage() {
             S/ {metricas.totalEfectivo.toFixed(2)}
           </div>
           <div className="mt-1 text-[11px] font-medium text-slate">
-            Dinero físico en gaveta de mostrador
+            {metricas.pctEfectivo}% del total recaudado
           </div>
         </div>
 
@@ -184,7 +216,7 @@ export function VentasPage() {
             S/ {metricas.totalDigital.toFixed(2)}
           </div>
           <div className="mt-1 text-[11px] font-medium text-slate">
-            Billetera digital verificada
+            {metricas.pctDigital}% del total recaudado
           </div>
         </div>
 
@@ -197,7 +229,137 @@ export function VentasPage() {
             S/ {metricas.totalTarjeta.toFixed(2)}
           </div>
           <div className="mt-1 text-[11px] font-medium text-slate">
-            Débito y crédito procesado
+            {metricas.pctTarjeta}% del total recaudado
+          </div>
+        </div>
+      </div>
+
+      {/* GRÁFICOS VISUALES DE VENTAS Y MEDIOS DE PAGO */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Gráfico 1 (5 cols): Distribución por Medio de Pago y Presentación */}
+        <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs lg:col-span-5">
+          <div className="flex items-center gap-2 border-b border-ash pb-3">
+            <PieChart className="h-5 w-5 text-electric-blue" />
+            <div>
+              <h2 className="text-[15px] font-bold text-midnight-ink">
+                Composición de Ingresos por Medio de Pago
+              </h2>
+              <p className="text-[11px] text-slate">
+                Proporción porcentual de cobros en mostrador
+              </p>
+            </div>
+          </div>
+
+          {/* Barra apilada de medios de pago */}
+          <div className="mt-4 flex h-5 w-full overflow-hidden rounded-full bg-slate-200">
+            {metricas.pctEfectivo > 0 && (
+              <div
+                style={{ width: `${metricas.pctEfectivo}%` }}
+                className="bg-[#16a34a] transition-all duration-500"
+                title={`Efectivo: ${metricas.pctEfectivo}%`}
+              />
+            )}
+            {metricas.pctDigital > 0 && (
+              <div
+                style={{ width: `${metricas.pctDigital}%` }}
+                className="bg-[#7c3aed] transition-all duration-500"
+                title={`Yape / Plin: ${metricas.pctDigital}%`}
+              />
+            )}
+            {metricas.pctTarjeta > 0 && (
+              <div
+                style={{ width: `${metricas.pctTarjeta}%` }}
+                className="bg-[#2563eb] transition-all duration-500"
+                title={`Tarjeta POS: ${metricas.pctTarjeta}%`}
+              />
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2.5 font-geist-mono text-[12px]">
+            <div className="flex items-center justify-between rounded-[8px] border border-[#86efac] bg-[#f0fdf4] px-3 py-2">
+              <span className="flex items-center gap-2 font-semibold text-[#15803d]">
+                <span className="h-3 w-3 rounded-full bg-[#16a34a]" />
+                EFECTIVO
+              </span>
+              <span className="whitespace-nowrap font-bold text-midnight-ink">
+                S/ {metricas.totalEfectivo.toFixed(2)} ({metricas.pctEfectivo}%)
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-[8px] border border-[#c4b5fd] bg-[#f5f3ff] px-3 py-2">
+              <span className="flex items-center gap-2 font-semibold text-[#6d28d9]">
+                <span className="h-3 w-3 rounded-full bg-[#7c3aed]" />
+                YAPE / PLIN
+              </span>
+              <span className="whitespace-nowrap font-bold text-midnight-ink">
+                S/ {metricas.totalDigital.toFixed(2)} ({metricas.pctDigital}%)
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between rounded-[8px] border border-[#93c5fd] bg-[#eff6ff] px-3 py-2">
+              <span className="flex items-center gap-2 font-semibold text-deep-sapphire">
+                <span className="h-3 w-3 rounded-full bg-[#2563eb]" />
+                TARJETA POS
+              </span>
+              <span className="whitespace-nowrap font-bold text-midnight-ink">
+                S/ {metricas.totalTarjeta.toFixed(2)} ({metricas.pctTarjeta}%)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfico 2 (7 cols): Ranking de Medicamentos Más Vendidos */}
+        <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs lg:col-span-7">
+          <div className="flex items-center justify-between border-b border-ash pb-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-electric-blue" />
+              <div>
+                <h2 className="text-[15px] font-bold text-midnight-ink">
+                  Top Medicamentos por Facturación y Rotación en Caja
+                </h2>
+                <p className="text-[11px] text-slate">
+                  Ranking de productos con mayor importe recaudado y unidades mínimas despachadas
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {metricas.topProductos.length === 0 ? (
+              <p className="py-10 text-center text-[13px] text-slate">
+                Sin ventas registradas para graficar.
+              </p>
+            ) : (
+              metricas.topProductos.map((item, idx) => {
+                const maxImp = Math.max(
+                  metricas.topProductos[0]?.importe || 1,
+                  1
+                )
+                const pct = Math.round((item.importe / maxImp) * 100)
+
+                return (
+                  <div
+                    key={item.producto_id}
+                    className="rounded-[10px] border border-ash bg-[#f8fafc] p-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[12px]">
+                      <span className="truncate font-bold text-midnight-ink">
+                        #{idx + 1} · {item.nombre}
+                      </span>
+                      <span className="whitespace-nowrap font-geist-mono font-bold text-electric-blue">
+                        S/ {item.importe.toFixed(2)} ({item.unidades} u.mín)
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-electric-blue transition-all duration-500"
+                        style={{ width: `${Math.max(pct, 5)}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       </div>
