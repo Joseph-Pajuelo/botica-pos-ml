@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Sparkles,
@@ -11,6 +11,8 @@ import {
   Activity,
   Calendar,
   Filter,
+  BarChart3,
+  PieChart,
 } from 'lucide-react'
 import { mlApi, getErrorMessage } from '../services/api'
 import { StatusBadge } from '../components'
@@ -19,42 +21,235 @@ const ESTADO_BADGE_MAP = {
   CRITICO: {
     variant: 'danger',
     label: 'QUIEBRE CRÍTICO',
+    color: '#dc2626',
+    bg: '#fee2e2',
   },
   ALERTA_REORDEN: {
     variant: 'lavender',
     label: 'SUGERENCIA ML REORDEN',
+    color: '#7c3aed',
+    bg: '#ede9fe',
   },
   RIESGO_VENCIMIENTO: {
     variant: 'tangerine',
     label: 'SOBRESTOCK / RIESGO VENC.',
+    color: '#ea580c',
+    bg: '#ffedd5',
   },
   OPTIMO: {
     variant: 'mint',
     label: 'STOCK ÓPTIMO',
+    color: '#16a34a',
+    bg: '#dcfce7',
   },
+}
+
+/**
+ * Gráfico SVG de Área y Línea para la Curva de Tendencia de Demanda (Lags t-30, t-14, t-7 -> Predicción +15d)
+ */
+function DemandTrendChart({ sku }) {
+  if (!sku) return null
+
+  // Normalizamos a demanda quincenal equivalente (15 días) para comparar la aceleración real vs predicción ML
+  const eq30d = Math.round((Number(sku.ventas_ultimos_30d || 0) / 30) * 15)
+  const eq14d = Math.round((Number(sku.ventas_ultimos_14d || 0) / 14) * 15)
+  const eq7d = Math.round((Number(sku.ventas_ultimos_7d || 0) / 7) * 15)
+  const pred15d = Number(sku.demanda_predicha_15d || 0)
+  const stockActual = Number(sku.stock_actual_unidades || 0)
+
+  const pointsData = [
+    { label: 'Ritmo t-30d', sub: `${sku.ventas_ultimos_30d}u / 30d`, val: eq30d },
+    { label: 'Ritmo t-14d', sub: `${sku.ventas_ultimos_14d}u / 14d`, val: eq14d },
+    { label: 'Ritmo t-7d', sub: `${sku.ventas_ultimos_7d}u / 7d`, val: eq7d },
+    { label: 'Proyección ML (+15d)', sub: 'Horizonte 15d', val: pred15d, isPrediction: true },
+  ]
+
+  const maxVal = Math.max(...pointsData.map((p) => p.val), stockActual, 20) * 1.18
+  const width = 520
+  const height = 200
+  const padLeft = 44
+  const padRight = 32
+  const padTop = 26
+  const padBottom = 38
+  const innerW = width - padLeft - padRight
+  const innerH = height - padTop - padBottom
+
+  const coords = pointsData.map((p, idx) => {
+    const x = padLeft + (idx / (pointsData.length - 1)) * innerW
+    const y = padTop + innerH - (p.val / maxVal) * innerH
+    return { ...p, x, y }
+  })
+
+  const linePath = coords
+    .map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`)
+    .join(' ')
+
+  const areaPath = `${linePath} L ${coords[coords.length - 1].x.toFixed(1)} ${
+    padTop + innerH
+  } L ${coords[0].x.toFixed(1)} ${padTop + innerH} Z`
+
+  const stockY = padTop + innerH - (stockActual / maxVal) * innerH
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span className="text-[13px] font-bold text-midnight-ink">
+            Curva de Velocidad de Demanda Quincenal: {sku.nombre}
+          </span>
+          <p className="font-geist-mono text-[11px] text-slate">
+            Evolución de tasa de salida (normalizada a 15 días) vs. Stock disponible ({stockActual} u.mín)
+          </p>
+        </div>
+        <div className="flex items-center gap-3 font-geist-mono text-[11px]">
+          <span className="inline-flex items-center gap-1.5 text-[#6d28d9] font-semibold">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#7c3aed]" />
+            Demanda / Predicción ML
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[#15803d] font-semibold">
+            <span className="h-0.5 w-4 bg-[#16a34a]" />
+            Nivel Stock Actual ({stockActual}u)
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-[10px] border border-ash bg-[#f8fafc] p-3">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-[195px] w-full overflow-visible"
+        >
+          <defs>
+            <linearGradient id="mlAreaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+
+          {/* Líneas guía horizontales */}
+          {[0, 0.5, 1].map((t, idx) => {
+            const y = padTop + innerH - t * innerH
+            const labelVal = Math.round(t * maxVal)
+            return (
+              <g key={idx}>
+                <line
+                  x1={padLeft}
+                  y1={y}
+                  x2={width - padRight}
+                  y2={y}
+                  stroke="#e2e8f0"
+                  strokeDasharray="3 3"
+                />
+                <text
+                  x={padLeft - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-slate-400 font-geist-mono text-[10px]"
+                >
+                  {labelVal}u
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Línea punteada de Stock Actual */}
+          <line
+            x1={padLeft}
+            y1={stockY}
+            x2={width - padRight}
+            y2={stockY}
+            stroke="#16a34a"
+            strokeWidth="1.8"
+            strokeDasharray="5 4"
+          />
+
+          {/* Área bajo la curva */}
+          <path d={areaPath} fill="url(#mlAreaGrad)" />
+
+          {/* Línea de tendencia */}
+          <path
+            d={linePath}
+            fill="none"
+            stroke="#7c3aed"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Puntos y etiquetas */}
+          {coords.map((c, idx) => (
+            <g key={idx}>
+              <circle
+                cx={c.x}
+                cy={c.y}
+                r={c.isPrediction ? 6 : 4.5}
+                fill={c.isPrediction ? '#2563eb' : '#7c3aed'}
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+              <text
+                x={c.x}
+                y={c.y - 10}
+                textAnchor="middle"
+                className="fill-slate-900 font-geist-mono text-[11px] font-bold"
+              >
+                {c.val}u
+              </text>
+              <text
+                x={c.x}
+                y={padTop + innerH + 16}
+                textAnchor="middle"
+                className="fill-slate-700 font-inter text-[10px] font-semibold"
+              >
+                {c.label}
+              </text>
+              <text
+                x={c.x}
+                y={padTop + innerH + 29}
+                textAnchor="middle"
+                className="fill-slate-400 font-geist-mono text-[9px]"
+              >
+                {c.sub}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  )
 }
 
 export function MLDashboardPage() {
   const navigate = useNavigate()
   const [reporte, setReporte] = useState(null)
   const [soloCriticos, setSoloCriticos] = useState(false)
+  const [selectedSkuId, setSelectedSkuId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState(null)
   const [seedInfo, setSeedInfo] = useState(null)
 
-  const ejecutarPrediccionML = useCallback(async (filtrarCriticos = soloCriticos) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await mlApi.obtenerSugerenciasReorden(filtrarCriticos)
-      setReporte(data)
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [soloCriticos])
+  const ejecutarPrediccionML = useCallback(
+    async (filtrarCriticos = soloCriticos) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await mlApi.obtenerSugerenciasReorden(filtrarCriticos)
+        setReporte(data)
+        if (data?.sugerencias?.length > 0) {
+          setSelectedSkuId((prev) =>
+            prev && data.sugerencias.some((s) => s.producto_id === prev)
+              ? prev
+              : data.sugerencias[0].producto_id
+          )
+        }
+      } catch (err) {
+        setError(getErrorMessage(err))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [soloCriticos]
+  )
 
   useEffect(() => {
     ejecutarPrediccionML(soloCriticos)
@@ -78,9 +273,54 @@ export function MLDashboardPage() {
   }
 
   const irAAbastecerSKU = (sug) => {
-    const unidades = Math.max(sug.cantidad_unidades_sugerida || 100, sug.unidades_por_caja || 100)
+    const unidades = Math.max(
+      sug.cantidad_unidades_sugerida || 100,
+      sug.unidades_por_caja || 100
+    )
     navigate(`/lotes-kardex?producto_id=${sug.producto_id}&unidades=${unidades}`)
   }
+
+  // Distribución de estados de rotación para el gráfico de anillo
+  const distribucionEstados = useMemo(() => {
+    const sugs = reporte?.sugerencias || []
+    const conteo = {
+      CRITICO: 0,
+      ALERTA_REORDEN: 0,
+      RIESGO_VENCIMIENTO: 0,
+      OPTIMO: 0,
+    }
+    sugs.forEach((s) => {
+      conteo[s.estado_rotacion] = (conteo[s.estado_rotacion] || 0) + 1
+    })
+    const total = Math.max(sugs.length, 1)
+    return Object.entries(conteo).map(([key, count]) => ({
+      key,
+      count,
+      pct: Math.round((count / total) * 100),
+      ...ESTADO_BADGE_MAP[key],
+    }))
+  }, [reporte])
+
+  const skuSeleccionado = useMemo(() => {
+    const sugs = reporte?.sugerencias || []
+    return (
+      sugs.find((s) => s.producto_id === selectedSkuId) || sugs[0] || null
+    )
+  }, [reporte, selectedSkuId])
+
+  const maxEscalaBarras = useMemo(() => {
+    const sugs = reporte?.sugerencias || []
+    let max = 50
+    sugs.forEach((s) => {
+      max = Math.max(
+        max,
+        Number(s.stock_actual_unidades || 0),
+        Number(s.demanda_predicha_15d || 0),
+        Number(s.ventas_ultimos_14d || 0)
+      )
+    })
+    return max
+  }, [reporte])
 
   return (
     <div className="space-y-6">
@@ -211,6 +451,161 @@ export function MLDashboardPage() {
         </div>
       </div>
 
+      {/* SECCIÓN DE GRÁFICOS VISUALES INTERACTIVOS */}
+      {reporte?.sugerencias && reporte.sugerencias.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Gráfico 1 (7 cols): Comparativa de Barras Stock Actual vs Demanda Predicha ML 15d */}
+          <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs lg:col-span-7">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ash pb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-electric-blue" />
+                <div>
+                  <h2 className="text-[15px] font-bold text-midnight-ink">
+                    Comparativa Visual: Stock Actual vs. Demanda Predicha ML (15d)
+                  </h2>
+                  <p className="text-[11px] text-slate">
+                    Haz clic en cualquier medicamento para inspeccionar su curva de lags a la derecha
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 font-geist-mono text-[11px] font-semibold">
+                <span className="inline-flex items-center gap-1.5 text-electric-blue">
+                  <span className="h-2.5 w-2.5 rounded-xs bg-electric-blue" />
+                  Stock FEFO
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-[#6d28d9]">
+                  <span className="h-2.5 w-2.5 rounded-xs bg-[#7c3aed]" />
+                  Predicción 15d
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 max-h-[340px] space-y-2.5 overflow-y-auto pr-1">
+              {reporte.sugerencias.map((sug) => {
+                const pctStock = Math.min(
+                  100,
+                  Math.round((sug.stock_actual_unidades / maxEscalaBarras) * 100)
+                )
+                const pctPred = Math.min(
+                  100,
+                  Math.round((sug.demanda_predicha_15d / maxEscalaBarras) * 100)
+                )
+                const isSelected = skuSeleccionado?.producto_id === sug.producto_id
+                const cfg =
+                  ESTADO_BADGE_MAP[sug.estado_rotacion] || ESTADO_BADGE_MAP.OPTIMO
+
+                return (
+                  <div
+                    key={sug.producto_id}
+                    onClick={() => setSelectedSkuId(sug.producto_id)}
+                    className={`cursor-pointer rounded-[10px] border p-2.5 transition ${
+                      isSelected
+                        ? 'border-electric-blue bg-[#eff6ff]'
+                        : 'border-ash bg-[#f8fafc] hover:bg-paper-mist'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-[12px]">
+                      <span className="truncate font-semibold text-midnight-ink">
+                        {sug.nombre}
+                      </span>
+                      <StatusBadge variant={cfg.variant} mono>
+                        {sug.estado_rotacion}
+                      </StatusBadge>
+                    </div>
+
+                    <div className="mt-2 space-y-1.5 font-geist-mono text-[11px]">
+                      {/* Barra Stock Actual */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-20 shrink-0 text-slate">Stock FEFO:</span>
+                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-electric-blue transition-all duration-500"
+                            style={{ width: `${Math.max(pctStock, 3)}%` }}
+                          />
+                        </div>
+                        <span className="w-14 shrink-0 text-right font-bold text-midnight-ink">
+                          {sug.stock_actual_unidades}u
+                        </span>
+                      </div>
+
+                      {/* Barra Demanda Predicha 15d */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-20 shrink-0 text-[#6d28d9]">
+                          Pred. 15d:
+                        </span>
+                        <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-[#7c3aed] transition-all duration-500"
+                            style={{ width: `${Math.max(pctPred, 3)}%` }}
+                          />
+                        </div>
+                        <span className="w-14 shrink-0 text-right font-bold text-[#6d28d9]">
+                          {sug.demanda_predicha_15d}u
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Gráfico 2 (5 cols): Curva de Lags Temporales + Distribución del Inventario */}
+          <div className="space-y-4 lg:col-span-5">
+            <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
+              <DemandTrendChart sku={skuSeleccionado} />
+            </div>
+
+            {/* Distribución de Estados de Rotación del Catálogo */}
+            <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
+              <div className="flex items-center gap-2 border-b border-ash pb-2.5">
+                <PieChart className="h-4 w-4 text-[#7c3aed]" />
+                <h3 className="text-[14px] font-bold text-midnight-ink">
+                  Distribución de Salud del Inventario (Clasificación ML)
+                </h3>
+              </div>
+
+              {/* Barra apilada multicapa */}
+              <div className="mt-3 flex h-4 w-full overflow-hidden rounded-full bg-slate-200">
+                {distribucionEstados.map((d) =>
+                  d.count > 0 ? (
+                    <div
+                      key={d.key}
+                      style={{
+                        width: `${d.pct}%`,
+                        backgroundColor: d.color,
+                      }}
+                      title={`${d.label}: ${d.count} SKUs (${d.pct}%)`}
+                    />
+                  ) : null
+                )}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {distribucionEstados.map((d) => (
+                  <div
+                    key={d.key}
+                    className="flex items-center justify-between rounded-[8px] border border-ash bg-[#f8fafc] px-2.5 py-1.5 font-geist-mono text-[11px]"
+                  >
+                    <span className="flex items-center gap-1.5 font-semibold text-midnight-ink">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: d.color }}
+                      />
+                      <span className="truncate">{d.key}</span>
+                    </span>
+                    <span className="whitespace-nowrap font-bold text-slate">
+                      {d.count} ({d.pct}%)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabla de Sugerencias de Reorden por SKU */}
       <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ash pb-3">
@@ -275,7 +670,11 @@ export function MLDashboardPage() {
                     ESTADO_BADGE_MAP[sug.estado_rotacion] || ESTADO_BADGE_MAP.OPTIMO
 
                   return (
-                    <tr key={sug.producto_id} className="transition hover:bg-[#eff6ff]/60">
+                    <tr
+                      key={sug.producto_id}
+                      onClick={() => setSelectedSkuId(sug.producto_id)}
+                      className="cursor-pointer transition hover:bg-[#eff6ff]/60"
+                    >
                       <td className="px-3 py-3">
                         <div className="font-bold text-midnight-ink">{sug.nombre}</div>
                         <div className="mt-0.5 font-geist-mono text-[11px] font-medium text-slate">
@@ -369,7 +768,10 @@ export function MLDashboardPage() {
                         {sug.cajas_sugeridas_compra > 0 ? (
                           <button
                             type="button"
-                            onClick={() => irAAbastecerSKU(sug)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              irAAbastecerSKU(sug)
+                            }}
                             className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#93c5fd] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-semibold text-electric-blue transition hover:bg-electric-blue hover:text-canvas-white"
                           >
                             <ShoppingBag className="h-3.5 w-3.5" />
