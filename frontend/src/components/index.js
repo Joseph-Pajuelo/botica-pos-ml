@@ -1,2 +1,4 @@
-// Reusable UI components following DesingBotica.md (Dub Style Reference)
-export {}
+export { StatusBadge } from './StatusBadge'
+export { Modal } from './Modal'
+export { ThermalTicket } from './ThermalTicket'
+export { Navbar } from './Navbar'

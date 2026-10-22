@@ -1,2 +1,5 @@
-// Application pages (POS, Inventario, Lotes, Compras, Dashboard ML)
-export {}
+export { POSPage } from './POSPage'
+export { VentasPage } from './VentasPage'
+export { InventarioPage } from './InventarioPage'
+export { LotesKardexPage } from './LotesKardexPage'
+export { MLDashboardPage } from './MLDashboardPage'
