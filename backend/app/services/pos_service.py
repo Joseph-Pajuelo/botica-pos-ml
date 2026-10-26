@@ -4,7 +4,12 @@ from typing import List
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.exceptions import ProductoNoEncontradoError, StockInsuficienteError
+from app.core.exceptions import (
+    ProductoNoEncontradoError,
+    StockInsuficienteError,
+    VentaNoEncontradaError,
+    VentaYaAnuladaError,
+)
 from app.models.enums import TipoMovimientoKardex
 from app.models.kardex import Kardex
 from app.models.venta import DetalleVenta, Venta
@@ -20,7 +25,7 @@ class POSService:
     - Descuenta automáticamente del lote vigente con fecha de vencimiento más próxima.
     - Si un lote próximo a vencer no cubre toda la cantidad pedida, hace partición
       automática (multi-lote) tomando el saldo del siguiente lote vigente.
-    - Registra cada salida en el Kardex inmutable.
+    - Registra cada salida y reversión por anulación en el Kardex inmutable.
     """
 
     def __init__(self, db: Session) -> None:
@@ -54,7 +59,6 @@ class POSService:
                 cantidad_presentacion=item.cantidad_presentacion,
             )
 
-            # Obtener lotes vigentes ordenados por FEFO con bloqueo de fila (FOR UPDATE)
             lotes_fefo = self.lote_repo.obtener_lotes_disponibles_fefo(
                 producto_id=producto.id,
                 fecha_referencia=hoy,
@@ -70,7 +74,6 @@ class POSService:
                     disponible=stock_disponible,
                 )
 
-            # Algoritmo de partición FEFO (puede abarcar 1 o más lotes si el primero se agota)
             unidades_pendientes = calculo.unidades_minimas
             precio_por_unidad_minima = calculo.subtotal / Decimal(
                 calculo.unidades_minimas
@@ -120,6 +123,41 @@ class POSService:
         self.db.commit()
         self.db.refresh(nueva_venta)
         return nueva_venta
+
+    def anular_venta_y_revertir_kardex(
+        self, venta_id: int, motivo: str
+    ) -> Venta:
+        """
+        Anula una venta sin borrar registros históricos:
+        1. Marca `venta.anulada = True`.
+        2. Restaura exactamente las unidades mínimas al `lote_id` original de cada línea.
+        3. Inserta un movimiento inmutable compensatorio (`AJUSTE_INVENTARIO`) en el Kardex.
+        """
+        venta = self.obtener_venta(venta_id)
+        if not venta:
+            raise VentaNoEncontradaError(venta_id)
+        if venta.anulada:
+            raise VentaYaAnuladaError(venta_id)
+
+        venta.anulada = True
+
+        for detalle in venta.detalles:
+            lote = self.lote_repo.get_by_id(detalle.lote_id)
+            if lote:
+                lote.stock_actual += detalle.cantidad_unidades
+                reversion = Kardex(
+                    lote_id=lote.id,
+                    tipo_movimiento=TipoMovimientoKardex.AJUSTE_INVENTARIO,
+                    cantidad=detalle.cantidad_unidades,
+                    stock_resultante=lote.stock_actual,
+                    glosa=f"Reversión por anulación de Venta #{venta.id}: {motivo}",
+                    referencia_venta_id=venta.id,
+                )
+                self.db.add(reversion)
+
+        self.db.commit()
+        self.db.refresh(venta)
+        return venta
 
     def obtener_venta(self, venta_id: int) -> Venta | None:
         stmt = (

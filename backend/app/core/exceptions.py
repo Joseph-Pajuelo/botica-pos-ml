@@ -23,6 +23,22 @@ class LoteNoEncontradoError(BoticaDomainError):
         )
 
 
+class VentaNoEncontradaError(BoticaDomainError):
+    def __init__(self, venta_id: int) -> None:
+        super().__init__(
+            f"No se encontró la venta con ID #{venta_id}.",
+            codigo_http=404,
+        )
+
+
+class VentaYaAnuladaError(BoticaDomainError):
+    def __init__(self, venta_id: int) -> None:
+        super().__init__(
+            f"La venta #{venta_id} ya fue anulada previamente.",
+            codigo_http=409,
+        )
+
+
 class CodigoBarrasDuplicadoError(BoticaDomainError):
     def __init__(self, codigo_barras: str) -> None:
         super().__init__(
@@ -37,6 +53,19 @@ class LoteDuplicadoError(BoticaDomainError):
             f"El número de lote '{numero_lote}' ya está registrado para este producto.",
             codigo_http=409,
         )
+
+
+class UsuarioDuplicadoError(BoticaDomainError):
+    def __init__(self, username: str) -> None:
+        super().__init__(
+            f"El nombre de usuario '{username}' ya se encuentra registrado.",
+            codigo_http=409,
+        )
+
+
+class CredencialesInvalidasError(BoticaDomainError):
+    def __init__(self, mensaje: str = "Usuario o contraseña incorrectos.") -> None:
+        super().__init__(mensaje, codigo_http=401)
 
 
 class PresentacionNoPermitidaError(BoticaDomainError):
