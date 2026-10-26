@@ -23,6 +23,11 @@ class LoteNoEncontradoError(BoticaDomainError):
         )
 
 
+class LoteVencidoError(BoticaDomainError):
+    def __init__(self, mensaje: str) -> None:
+        super().__init__(mensaje, codigo_http=400)
+
+
 class VentaNoEncontradaError(BoticaDomainError):
     def __init__(self, venta_id: int) -> None:
         super().__init__(
