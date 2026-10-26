@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.venta import VentaCreate, VentaRead
+from app.schemas.venta import AnularVentaRequest, VentaCreate, VentaRead
 from app.services.pos_service import POSService
 
 router = APIRouter(prefix="/pos", tags=["Punto de Venta (POS) FEFO"])
@@ -42,3 +42,18 @@ def obtener_detalle_venta(
             detail=f"Venta #{venta_id} no encontrada.",
         )
     return venta
+
+
+@router.post("/ventas/{venta_id}/anular", response_model=VentaRead)
+def anular_venta_pos(
+    venta_id: int,
+    payload: AnularVentaRequest = AnularVentaRequest(),
+    db: Session = Depends(get_db),
+):
+    """
+    Anula una venta sin eliminar registros históricos, devolviendo el stock exacto
+    a cada lote FEFO de origen y registrando el asiento compensatorio en el Kardex.
+    """
+    return POSService(db).anular_venta_y_revertir_kardex(
+        venta_id=venta_id, motivo=payload.motivo
+    )

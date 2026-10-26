@@ -63,15 +63,7 @@ class InventarioService:
         self.db.refresh(producto)
         return producto
 
-    def obtener_por_codigo_barras_pos(self, codigo_barras: str) -> ProductoPOSRead:
-        """
-        Consulta optimizada (< 100ms) para cuando el lector USB HID escanea un medicamento.
-        Retorna el producto enriquecido con el stock FEFO vigente y el lote activo más próximo a vencer.
-        """
-        producto = self.producto_repo.get_by_codigo_barras(codigo_barras)
-        if not producto:
-            raise ProductoNoEncontradoError(codigo_barras)
-
+    def _enriquecer_producto_pos(self, producto: Producto) -> ProductoPOSRead:
         lotes_vigentes = self.lote_repo.obtener_lotes_disponibles_fefo(producto.id)
         stock_total = sum(lote.stock_actual for lote in lotes_vigentes)
         lote_fefo = lotes_vigentes[0] if lotes_vigentes else None
@@ -83,6 +75,47 @@ class InventarioService:
         )
         respuesta.lote_fefo_numero = lote_fefo.numero_lote if lote_fefo else None
         return respuesta
+
+    def obtener_por_codigo_barras_pos(self, codigo_barras: str) -> ProductoPOSRead:
+        """
+        Consulta optimizada (< 100ms) para cuando el lector USB HID escanea un medicamento.
+        Retorna el producto enriquecido con el stock FEFO vigente y el lote activo más próximo a vencer.
+        """
+        producto = self.producto_repo.get_by_codigo_barras(codigo_barras)
+        if not producto:
+            raise ProductoNoEncontradoError(codigo_barras)
+        return self._enriquecer_producto_pos(producto)
+
+    def buscar_sustitutos_bioequivalentes(
+        self, producto_id: int
+    ) -> List[ProductoPOSRead]:
+        """
+        Busca otros medicamentos activos que compartan el mismo principio activo (genéricos o equivalentes)
+        y que cuenten con stock FEFO disponible (> 0), ordenados por menor precio y vencimiento más próximo.
+        """
+        producto_origen = self.producto_repo.get_by_id(producto_id)
+        if not producto_origen:
+            raise ProductoNoEncontradoError(producto_id)
+
+        if not producto_origen.principio_activo:
+            return []
+
+        termino_pa = producto_origen.principio_activo.strip()
+        stmt = select(Producto).where(
+            Producto.id != producto_origen.id,
+            Producto.activo.is_(True),
+            Producto.principio_activo.ilike(f"%{termino_pa}%"),
+        )
+        candidatos = list(self.db.scalars(stmt).all())
+
+        sustitutos: List[ProductoPOSRead] = []
+        for cand in candidatos:
+            info = self._enriquecer_producto_pos(cand)
+            if info.stock_total_vigente > 0:
+                sustitutos.append(info)
+
+        sustitutos.sort(key=lambda s: (s.precio_venta_caja, s.id))
+        return sustitutos
 
     def listar_productos(
         self, buscar: str | None = None, skip: int = 0, limit: int = 50

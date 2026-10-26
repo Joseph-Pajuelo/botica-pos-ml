@@ -18,6 +18,14 @@ class VentaCreate(BaseModel):
     items: List[ItemVentaInput] = Field(..., min_length=1)
 
 
+class AnularVentaRequest(BaseModel):
+    motivo: str = Field(
+        default="Error de digitación en mostrador",
+        min_length=3,
+        max_length=200,
+    )
+
+
 class DetalleVentaRead(BaseModel):
     id: int
     lote_id: int

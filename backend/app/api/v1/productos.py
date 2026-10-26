@@ -11,7 +11,7 @@ from app.schemas.producto import (
 )
 from app.services.inventario_service import InventarioService
 
-router = APIRouter(prefix="/productos", tags=["Productos y Lector HID"])
+router = APIRouter(prefix="/productos", tags=["Productos, Sustitutos y Lector HID"])
 
 
 @router.post("", response_model=ProductoRead, status_code=status.HTTP_201_CREATED)
@@ -45,6 +45,17 @@ def escanear_codigo_barras(
     Devuelve el medicamento junto con su stock vigente FEFO y lote próximo a vencer.
     """
     return InventarioService(db).obtener_por_codigo_barras_pos(codigo_barras)
+
+
+@router.get("/{producto_id}/sustitutos", response_model=List[ProductoPOSRead])
+def buscar_sustitutos_bioequivalentes(
+    producto_id: int, db: Session = Depends(get_db)
+):
+    """
+    Sugiere medicamentos alternativos con el mismo principio activo que cuenten
+    con stock FEFO disponible (> 0), ordenados por menor precio.
+    """
+    return InventarioService(db).buscar_sustitutos_bioequivalentes(producto_id)
 
 
 @router.patch("/{producto_id}", response_model=ProductoRead)

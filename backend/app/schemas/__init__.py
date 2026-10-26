@@ -12,7 +12,20 @@ from app.schemas.producto import (
     ProductoRead,
     ProductoUpdate,
 )
-from app.schemas.venta import DetalleVentaRead, ItemVentaInput, VentaCreate, VentaRead
+from app.schemas.reporte import DesgloseMetodoPago, ResumenEjecutivoResponse
+from app.schemas.usuario import (
+    LoginRequest,
+    TokenResponse,
+    UsuarioCreate,
+    UsuarioRead,
+)
+from app.schemas.venta import (
+    AnularVentaRequest,
+    DetalleVentaRead,
+    ItemVentaInput,
+    VentaCreate,
+    VentaRead,
+)
 
 __all__ = [
     "ProductoCreate",
@@ -24,6 +37,7 @@ __all__ = [
     "LoteRead",
     "ItemVentaInput",
     "VentaCreate",
+    "AnularVentaRequest",
     "DetalleVentaRead",
     "VentaRead",
     "KardexRead",
@@ -31,4 +45,10 @@ __all__ = [
     "SugerenciaCompraSKU",
     "ReorderSuggestionsResponse",
     "SeedColdStartResponse",
+    "UsuarioCreate",
+    "UsuarioRead",
+    "LoginRequest",
+    "TokenResponse",
+    "DesgloseMetodoPago",
+    "ResumenEjecutivoResponse",
 ]
