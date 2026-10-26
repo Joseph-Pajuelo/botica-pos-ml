@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.exceptions import (
+    LoteVencidoError,
     PresentacionNoPermitidaError,
     StockInsuficienteError,
 )
@@ -32,7 +33,6 @@ def test_venta_pos_fefo_particion_multilote_y_kardex(db_session):
     inv_service = InventarioService(db_session)
     pos_service = POSService(db_session)
 
-    # 1. Crear Amoxicilina fraccionable (Caja x 100, Blíster x 10)
     amoxicilina = inv_service.crear_producto(
         ProductoCreate(
             codigo_barras="7751234560001",
@@ -51,7 +51,6 @@ def test_venta_pos_fefo_particion_multilote_y_kardex(db_session):
     )
 
     hoy = date.today()
-    # 2. Ingresar Lote A (vence en 15 días, solo quedan 4 pastillas)
     lote_a = inv_service.registrar_ingreso_lote(
         LoteCreate(
             producto_id=amoxicilina.id,
@@ -61,7 +60,6 @@ def test_venta_pos_fefo_particion_multilote_y_kardex(db_session):
             costo_compra_unitario=Decimal("0.20"),
         )
     )
-    # 3. Ingresar Lote B (vence en 120 días, tiene 50 pastillas)
     lote_b = inv_service.registrar_ingreso_lote(
         LoteCreate(
             producto_id=amoxicilina.id,
@@ -72,12 +70,10 @@ def test_venta_pos_fefo_particion_multilote_y_kardex(db_session):
         )
     )
 
-    # 4. Escanear en POS: debe reportar 54 unidades y que el lote FEFO activo es LOT-PROXIMO-A
     info_pos = inv_service.obtener_por_codigo_barras_pos("7751234560001")
     assert info_pos.stock_total_vigente == 54
     assert info_pos.lote_fefo_numero == "LOT-PROXIMO-A"
 
-    # 5. Vender 1 BLISTER (10 unidades). Debe agotar las 4 de Lote A y tomar 6 de Lote B
     venta = pos_service.procesar_venta_fefo(
         VentaCreate(
             metodo_pago=MetodoPago.EFECTIVO,
@@ -100,7 +96,6 @@ def test_venta_pos_fefo_particion_multilote_y_kardex(db_session):
     assert lote_a.stock_actual == 0
     assert lote_b.stock_actual == 44
 
-    # Verificar Kardex inmutable de Lote A (1 COMPRA + 1 VENTA)
     kardex_a = inv_service.obtener_kardex_por_lote(lote_a.id)
     assert len(kardex_a) == 2
     assert kardex_a[0].stock_resultante == 0
@@ -173,3 +168,43 @@ def test_rechazo_por_stock_insuficiente(db_session):
                 ],
             )
         )
+
+
+def test_bloqueo_sanitario_lote_caducado(db_session):
+    inv_service = InventarioService(db_session)
+    pos_service = POSService(db_session)
+
+    azitromicina = inv_service.crear_producto(
+        ProductoCreate(
+            codigo_barras="7757777770004",
+            nombre="Azitromicina 500mg",
+            precio_venta_caja=Decimal("40.00"),
+            fraccionable=False,
+            unidades_por_caja=3,
+        )
+    )
+    # Lote vencido hace 5 días con 10 unidades en stock
+    inv_service.registrar_ingreso_lote(
+        LoteCreate(
+            producto_id=azitromicina.id,
+            numero_lote="LOT-VENCIDO-01",
+            fecha_vencimiento=date.today() - timedelta(days=5),
+            stock_inicial=10,
+            costo_compra_unitario=Decimal("20.00"),
+        )
+    )
+
+    with pytest.raises(LoteVencidoError) as exc_info:
+        pos_service.procesar_venta_fefo(
+            VentaCreate(
+                metodo_pago=MetodoPago.EFECTIVO,
+                items=[
+                    ItemVentaInput(
+                        producto_id=azitromicina.id,
+                        tipo_presentacion=TipoPresentacion.CAJA,
+                        cantidad_presentacion=1,
+                    )
+                ],
+            )
+        )
+    assert "Bloqueo sanitario en mostrador" in str(exc_info.value)

@@ -1,10 +1,11 @@
 from datetime import date
 from decimal import Decimal
 from typing import List
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import (
+    LoteVencidoError,
     ProductoNoEncontradoError,
     StockInsuficienteError,
     VentaNoEncontradaError,
@@ -12,6 +13,7 @@ from app.core.exceptions import (
 )
 from app.models.enums import TipoMovimientoKardex
 from app.models.kardex import Kardex
+from app.models.lote import Lote
 from app.models.venta import DetalleVenta, Venta
 from app.repositories.lote_repo import LoteRepository
 from app.repositories.producto_repo import ProductoRepository
@@ -26,6 +28,7 @@ class POSService:
     - Si un lote próximo a vencer no cubre toda la cantidad pedida, hace partición
       automática (multi-lote) tomando el saldo del siguiente lote vigente.
     - Registra cada salida y reversión por anulación en el Kardex inmutable.
+    - Aplica validación sanitaria estricta: bloquea venta si los únicos lotes existentes están vencidos.
     """
 
     def __init__(self, db: Session) -> None:
@@ -68,6 +71,23 @@ class POSService:
 
             if stock_disponible < calculo.unidades_minimas:
                 self.db.rollback()
+
+                # Validación sanitaria: verificar si hay stock en mostrador que no se puede vender por estar caducado
+                stmt_vencidos = select(
+                    func.coalesce(func.sum(Lote.stock_actual), 0)
+                ).where(
+                    Lote.producto_id == producto.id,
+                    Lote.activo.is_(True),
+                    Lote.stock_actual > 0,
+                    Lote.fecha_vencimiento < hoy,
+                )
+                stock_vencido = int(self.db.scalar(stmt_vencidos) or 0)
+                if stock_vencido > 0:
+                    raise LoteVencidoError(
+                        f"Bloqueo sanitario en mostrador: '{producto.nombre}' cuenta con {stock_vencido} unidades "
+                        f"pero corresponden a lotes con fecha de vencimiento caducada que deben ser dados de baja en Kardex."
+                    )
+
                 raise StockInsuficienteError(
                     nombre_producto=producto.nombre,
                     solicitado=calculo.unidades_minimas,
