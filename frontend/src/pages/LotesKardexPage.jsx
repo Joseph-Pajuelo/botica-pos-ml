@@ -14,6 +14,13 @@ import {
 import { productosApi, inventarioApi, getErrorMessage } from '../services/api'
 import { StatusBadge, Modal } from '../components'
 
+const MOVIMIENTO_AMIGABLE = {
+  COMPRA: 'Ingreso de Compra',
+  VENTA: 'Venta en Mostrador',
+  MERMA_VENCIMIENTO: 'Retiro por Vencimiento / Deterioro',
+  AJUSTE_INVENTARIO: 'Ajuste de Conteo Físico',
+}
+
 export function LotesKardexPage() {
   const [searchParams] = useSearchParams()
   const preselectedProdId = searchParams.get('producto_id')
@@ -25,12 +32,10 @@ export function LotesKardexPage() {
   const [alertasVencimiento, setAlertasVencimiento] = useState([])
   const [diasUmbral, setDiasUmbral] = useState(90)
 
-  // Kardex del lote seleccionado
   const [loteKardexActivo, setLoteKardexActivo] = useState(null)
   const [movimientosKardex, setMovimientosKardex] = useState([])
   const [loadingKardex, setLoadingKardex] = useState(false)
 
-  // Modales: Ingreso de Compra de Lote y Ajuste/Merma
   const [modalIngresoOpen, setModalIngresoOpen] = useState(false)
   const [modalAjusteOpen, setModalAjusteOpen] = useState(false)
   const [loteParaAjuste, setLoteParaAjuste] = useState(null)
@@ -41,7 +46,7 @@ export function LotesKardexPage() {
     fecha_vencimiento: '',
     stock_inicial: 100,
     costo_compra_unitario: '0.15',
-    glosa: 'Ingreso por compra a droguería',
+    glosa: 'Ingreso por compra a proveedor',
   })
 
   const [formAjuste, setFormAjuste] = useState({
@@ -120,7 +125,7 @@ export function LotesKardexPage() {
         fecha_vencimiento: fechaSugerida.toISOString().slice(0, 10),
         stock_inicial: Number(preselectedUnits) || 100,
         costo_compra_unitario: '0.20',
-        glosa: 'Orden de reposición sugerida por Motor ML (15d)',
+        glosa: 'Reposición de stock sugerida por el sistema',
       })
       setModalIngresoOpen(true)
     }
@@ -169,7 +174,7 @@ export function LotesKardexPage() {
         glosa: formLote.glosa.trim() || 'Ingreso por compra de lote',
       })
       setSuccessMsg(
-        `Lote ${nuevo.numero_lote} ingresado (+${nuevo.stock_inicial} u.mín) con asiento COMPRA en el Kardex.`
+        `Se registró el lote ${nuevo.numero_lote} con ${nuevo.stock_inicial} unidades disponibles.`
       )
       setModalIngresoOpen(false)
       setProductoSeleccionadoId(String(nuevo.producto_id))
@@ -187,7 +192,7 @@ export function LotesKardexPage() {
     setFormAjuste({
       tipo_movimiento: 'MERMA_VENCIMIENTO',
       cantidad_unidades: 1,
-      glosa: `Retiro de mostrador del lote ${lote.numero_lote}`,
+      glosa: `Retiro de unidades del lote ${lote.numero_lote}`,
     })
     setModalAjusteOpen(true)
   }
@@ -207,7 +212,7 @@ export function LotesKardexPage() {
         glosa: formAjuste.glosa.trim(),
       })
       setSuccessMsg(
-        `Movimiento ${formAjuste.tipo_movimiento} registrado en el Lote ${actualizado.numero_lote}. Stock resultante: ${actualizado.stock_actual} u.mín.`
+        `Se actualizó el lote ${actualizado.numero_lote}. Quedan ${actualizado.stock_actual} unidades.`
       )
       setModalAjusteOpen(false)
       await cargarLotesDelProducto(productoSeleccionadoId)
@@ -229,24 +234,24 @@ export function LotesKardexPage() {
 
   return (
     <div className="space-y-6">
-      {/* Encabezado */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-ash bg-canvas-white px-5 py-4 shadow-xs">
+      {/* Encabezado Amigable */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[14px] border border-[#e5e0d8] bg-canvas-white px-6 py-4 shadow-2xs">
         <div>
-          <h1 className="font-satoshi text-[30px] font-bold leading-[1.15] text-midnight-ink">
-            Control de Lotes FEFO y Kardex Inmutable
+          <h1 className="font-satoshi text-[28px] font-bold leading-tight text-midnight-ink">
+            Control de Lotes y Fechas de Vencimiento
           </h1>
           <p className="mt-1 text-[14px] text-slate">
-            Trazabilidad por lote y fecha de vencimiento. Ningún stock se modifica sin asiento auditable en el Kardex.
+            Revisa qué lotes están próximos a vencer, registra nuevas compras de mercadería y consulta el historial de entradas y salidas.
           </p>
         </div>
 
         <button
           type="button"
           onClick={abrirModalIngreso}
-          className="inline-flex items-center gap-2 whitespace-nowrap rounded-[8px] bg-electric-blue px-4 py-2 text-[14px] font-semibold text-canvas-white shadow-xs hover:bg-deep-sapphire"
+          className="inline-flex items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#0d9488] px-4 py-2 text-[14px] font-semibold text-white shadow-2xs hover:bg-[#0f766e]"
         >
           <Plus className="h-4 w-4" />
-          Registrar Compra de Lote
+          Registrar Lote Recibido
         </button>
       </div>
 
@@ -259,7 +264,7 @@ export function LotesKardexPage() {
           <button
             type="button"
             onClick={() => setError(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
             Cerrar
           </button>
@@ -275,41 +280,47 @@ export function LotesKardexPage() {
           <button
             type="button"
             onClick={() => setSuccessMsg(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
             OK
           </button>
         </div>
       )}
 
-      {/* Tarjeta de Alertas de Vencimiento Próximo */}
-      <div className="rounded-[12px] border border-ash border-l-4 border-l-tangerine bg-canvas-white p-4 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ash pb-3">
+      {/* Avisos de Vencimiento Próximo */}
+      <div className="rounded-[14px] border border-[#e5e0d8] border-l-4 border-l-[#d97706] bg-canvas-white p-5 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e0d8] pb-3">
           <div className="flex items-center gap-2">
-            <CalendarClock className="h-5 w-5 text-tangerine" />
+            <CalendarClock className="h-5 w-5 text-[#d97706]" />
             <div>
               <h2 className="text-[16px] font-bold text-midnight-ink">
-                Semáforo de Alertas de Vencimiento FEFO
+                Medicamentos Próximos a Vencer
               </h2>
               <p className="text-[12px] text-slate">
-                Lotes activos con stock disponible que vencen en los próximos {diasUmbral} días
+                Lotes con unidades disponibles que vencen dentro de los próximos {diasUmbral} días
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {[30, 60, 90, 180, 365].map((d) => (
+            {[
+              { d: 30, label: '1 mes' },
+              { d: 60, label: '2 meses' },
+              { d: 90, label: '3 meses' },
+              { d: 180, label: '6 meses' },
+              { d: 365, label: '1 año' },
+            ].map((item) => (
               <button
-                key={d}
+                key={item.d}
                 type="button"
-                onClick={() => setDiasUmbral(d)}
-                className={`rounded-full px-3 py-1 font-geist-mono text-[12px] font-semibold transition ${
-                  diasUmbral === d
-                    ? 'bg-electric-blue text-canvas-white shadow-2xs'
-                    : 'border border-ash bg-paper-mist text-slate hover:text-midnight-ink'
+                onClick={() => setDiasUmbral(item.d)}
+                className={`rounded-full px-3 py-1 text-[12px] font-semibold transition ${
+                  diasUmbral === item.d
+                    ? 'bg-[#0d9488] text-white shadow-2xs'
+                    : 'border border-[#e5e0d8] bg-[#faf8f5] text-slate hover:text-midnight-ink'
                 }`}
               >
-                {d}d
+                {item.label}
               </button>
             ))}
           </div>
@@ -318,7 +329,7 @@ export function LotesKardexPage() {
         <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {alertasVencimiento.length === 0 ? (
             <div className="col-span-full py-4 text-center text-[13px] text-slate">
-              No hay lotes en riesgo de vencimiento dentro del umbral de {diasUmbral} días.
+              No hay medicamentos próximos a vencer en este periodo.
             </div>
           ) : (
             alertasVencimiento.map((lote) => {
@@ -331,26 +342,25 @@ export function LotesKardexPage() {
                     setProductoSeleccionadoId(String(lote.producto_id))
                     verKardexDeLote(lote)
                   }}
-                  className="cursor-pointer rounded-[12px] border border-ash bg-[#f8fafc] p-3 transition hover:border-tangerine hover:bg-[#fff7ed]"
+                  className="cursor-pointer rounded-[12px] border border-[#e5e0d8] bg-[#faf8f5] p-3 transition hover:border-[#d97706] hover:bg-[#fffbeb]"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-geist-mono text-[12px] font-bold text-midnight-ink">
-                      {lote.numero_lote}
+                      Lote {lote.numero_lote}
                     </span>
                     <StatusBadge
                       variant={diasRestantes <= 30 ? 'danger' : 'tangerine'}
-                      mono
                     >
-                      {diasRestantes} días
+                      Vence en {diasRestantes} días
                     </StatusBadge>
                   </div>
                   <div className="mt-1 truncate text-[13px] font-semibold text-midnight-ink">
-                    {prod?.nombre || `Producto #${lote.producto_id}`}
+                    {prod?.nombre || `Medicamento #${lote.producto_id}`}
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between font-geist-mono text-[11px] text-slate">
-                    <span>Vence: {lote.fecha_vencimiento}</span>
+                  <div className="mt-1.5 flex items-center justify-between text-[11.5px] text-slate">
+                    <span>Fecha: {lote.fecha_vencimiento}</span>
                     <span className="font-bold text-midnight-ink">
-                      Stock: {lote.stock_actual}u
+                      Quedan {lote.stock_actual} unds
                     </span>
                   </div>
                 </div>
@@ -360,22 +370,21 @@ export function LotesKardexPage() {
         </div>
       </div>
 
-      {/* Grilla: Cola de Lotes FEFO por Producto (Izquierda) y Auditoría Kardex Inmutable (Derecha) */}
+      {/* Grilla: Lotes por Medicamento (Izquierda) e Historial de Entradas y Salidas (Derecha) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Cola FEFO del Medicamento (6 cols) */}
-        <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs lg:col-span-6">
-          <div className="border-b border-ash pb-3">
+        <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white p-5 shadow-2xs lg:col-span-6">
+          <div className="border-b border-[#e5e0d8] pb-3">
             <label className="block text-[12px] font-bold uppercase tracking-wider text-slate">
-              Seleccionar Medicamento para Inspección FEFO
+              1. Elige un medicamento para ver sus lotes disponibles
             </label>
             <select
               value={productoSeleccionadoId}
               onChange={(e) => setProductoSeleccionadoId(e.target.value)}
-              className="mt-1.5 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-2 text-[14px] font-semibold text-midnight-ink focus:border-electric-blue focus:outline-none"
+              className="mt-1.5 w-full rounded-[10px] border-2 border-[#cbd5e1] bg-[#faf8f5] px-3 py-2 text-[14px] font-semibold text-midnight-ink focus:border-[#0d9488] focus:bg-white focus:outline-none"
             >
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.nombre} ({p.codigo_barras})
+                  {p.nombre}
                 </option>
               ))}
             </select>
@@ -383,22 +392,22 @@ export function LotesKardexPage() {
 
           <div className="mt-3 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[14px] font-bold text-midnight-ink">
-              <Layers className="h-4 w-4 text-electric-blue" />
-              Cola de Despacho FEFO (Orden de Vencimiento)
+              <Layers className="h-4 w-4 text-[#0d9488]" />
+              Orden de Salida en Mostrador
             </span>
-            <span className="font-geist-mono text-[11px] font-semibold text-slate">
-              {lotesProducto.length} lotes vigentes
+            <span className="text-[11.5px] font-semibold text-slate">
+              {lotesProducto.length} lote(s) activos
             </span>
           </div>
 
           <div className="mt-3 space-y-2.5">
             {lotesProducto.length === 0 ? (
-              <div className="rounded-[12px] border border-dashed border-ash py-8 text-center text-[13px] text-slate">
-                Este medicamento no tiene lotes vigentes con stock.
+              <div className="rounded-[12px] border border-dashed border-[#e5e0d8] py-8 text-center text-[13px] text-slate">
+                Este medicamento no tiene lotes con stock en este momento.
               </div>
             ) : (
               lotesProducto.map((lote, index) => {
-                const esPrioridadFefo = index === 0
+                const esPrimero = index === 0
                 const seleccionado = loteKardexActivo?.id === lote.id
                 return (
                   <div
@@ -406,8 +415,8 @@ export function LotesKardexPage() {
                     onClick={() => verKardexDeLote(lote)}
                     className={`cursor-pointer rounded-[12px] border-2 p-3.5 transition ${
                       seleccionado
-                        ? 'border-electric-blue bg-[#eff6ff]'
-                        : 'border-ash bg-canvas-white hover:bg-paper-mist'
+                        ? 'border-[#0d9488] bg-[#f0fdfa]'
+                        : 'border-[#e5e0d8] bg-canvas-white hover:bg-[#faf8f5]'
                     }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -415,13 +424,13 @@ export function LotesKardexPage() {
                         <span className="font-geist-mono text-[14px] font-bold text-midnight-ink">
                           {lote.numero_lote}
                         </span>
-                        {esPrioridadFefo ? (
-                          <StatusBadge variant="mint" mono>
-                            1° EN SALIR (FEFO ACTIVO)
+                        {esPrimero ? (
+                          <StatusBadge variant="mint">
+                            Sale primero (vence antes)
                           </StatusBadge>
                         ) : (
-                          <StatusBadge variant="neutral" mono withDot={false}>
-                            #{index + 1} En Cola
+                          <StatusBadge variant="neutral" withDot={false}>
+                            Lote de respaldo #{index + 1}
                           </StatusBadge>
                         )}
                       </div>
@@ -435,26 +444,32 @@ export function LotesKardexPage() {
                         className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#fdba74] bg-[#fff7ed] px-2.5 py-1 text-[11px] font-semibold text-[#c2410c] hover:bg-[#ffedd5]"
                       >
                         <SlidersHorizontal className="h-3 w-3" />
-                        Merma / Ajuste
+                        Dar de baja / Ajustar
                       </button>
                     </div>
 
-                    <div className="mt-2 grid grid-cols-3 gap-2 font-geist-mono text-[12px]">
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[12px]">
                       <div>
-                        <span className="block text-[10px] font-bold text-slate">VENCIMIENTO</span>
-                        <span className="font-semibold text-midnight-ink">
+                        <span className="block text-[10px] font-bold text-slate">
+                          FECHA VENCIMIENTO
+                        </span>
+                        <span className="font-geist-mono font-semibold text-midnight-ink">
                           {lote.fecha_vencimiento}
                         </span>
                       </div>
                       <div>
-                        <span className="block text-[10px] font-bold text-slate">STOCK ACTUAL</span>
-                        <span className="font-bold text-electric-blue">
-                          {lote.stock_actual} / {lote.stock_inicial} u.mín
+                        <span className="block text-[10px] font-bold text-slate">
+                          CANTIDAD DISPONIBLE
+                        </span>
+                        <span className="font-geist-mono font-bold text-[#0f766e]">
+                          {lote.stock_actual} de {lote.stock_inicial} unds
                         </span>
                       </div>
                       <div className="whitespace-nowrap text-right">
-                        <span className="block text-[10px] font-bold text-slate">COSTO UNIT.</span>
-                        <span className="font-bold text-midnight-ink">
+                        <span className="block text-[10px] font-bold text-slate">
+                          COSTO COMPRA
+                        </span>
+                        <span className="font-geist-mono font-bold text-midnight-ink">
                           S/ {Number(lote.costo_compra_unitario).toFixed(2)}
                         </span>
                       </div>
@@ -466,55 +481,55 @@ export function LotesKardexPage() {
           </div>
         </div>
 
-        {/* Visor de Kardex Inmutable por Lote (6 cols) */}
-        <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs lg:col-span-6">
-          <div className="flex items-center justify-between border-b border-ash pb-3">
+        {/* Historial de Entradas y Salidas (Derecha) */}
+        <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white p-5 shadow-2xs lg:col-span-6">
+          <div className="flex items-center justify-between border-b border-[#e5e0d8] pb-3">
             <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-electric-blue" />
+              <FileText className="h-4 w-4 text-[#0d9488]" />
               <div>
                 <h2 className="text-[16px] font-bold text-midnight-ink">
-                  Libro Kardex Inmutable
+                  2. Historial de Entradas y Salidas
                 </h2>
-                <p className="font-geist-mono text-[12px] text-slate">
+                <p className="text-[12px] text-slate">
                   {loteKardexActivo
-                    ? `Auditoría de movimientos · Lote ${loteKardexActivo.numero_lote}`
-                    : 'Seleccione un lote para inspeccionar su Kardex'}
+                    ? `Movimientos registrados del Lote ${loteKardexActivo.numero_lote}`
+                    : 'Selecciona un lote a la izquierda para ver su historial'}
                 </p>
               </div>
             </div>
             {loteKardexActivo && (
-              <StatusBadge variant="blue" mono>
-                Saldo: {loteKardexActivo.stock_actual} u.mín
+              <StatusBadge variant="mint">
+                Quedan: {loteKardexActivo.stock_actual} unds
               </StatusBadge>
             )}
           </div>
 
-          <div className="mt-3 max-h-[420px] overflow-x-auto overflow-y-auto rounded-[8px] border border-ash">
+          <div className="mt-3 max-h-[420px] overflow-x-auto overflow-y-auto rounded-[10px] border border-[#e5e0d8]">
             {loadingKardex ? (
               <p className="py-10 text-center text-[13px] font-medium text-slate">
-                Cargando asientos del Kardex...
+                Cargando historial del lote...
               </p>
             ) : movimientosKardex.length === 0 ? (
               <p className="py-10 text-center text-[13px] text-slate">
-                Seleccione un lote activo a la izquierda para auditar sus movimientos.
+                Selecciona un lote a la izquierda para revisar sus entradas y salidas.
               </p>
             ) : (
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-ash bg-paper-mist text-[11px] font-bold uppercase tracking-wider text-slate">
-                    <th className="whitespace-nowrap px-3 py-2">Fecha / Hora</th>
-                    <th className="whitespace-nowrap px-3 py-2">Movimiento</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-right">Cant.</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-right">Saldo</th>
-                    <th className="px-3 py-2">Glosa / Referencia</th>
+                  <tr className="border-b border-[#e5e0d8] bg-[#faf8f5] text-[11px] font-bold uppercase tracking-wider text-slate">
+                    <th className="whitespace-nowrap px-3 py-2.5">Fecha y Hora</th>
+                    <th className="whitespace-nowrap px-3 py-2.5">Tipo de Operación</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Cantidad</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Quedaron</th>
+                    <th className="px-3 py-2.5">Detalle / Motivo</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ash text-[12px]">
+                <tbody className="divide-y divide-[#e5e0d8] text-[12px]">
                   {movimientosKardex.map((mov) => {
                     const esIngreso = mov.cantidad > 0
                     return (
-                      <tr key={mov.id} className="hover:bg-[#eff6ff]/60">
-                        <td className="whitespace-nowrap px-3 py-2.5 font-geist-mono text-[11px] font-medium text-slate">
+                      <tr key={mov.id} className="hover:bg-[#f0fdfa]/60">
+                        <td className="whitespace-nowrap px-3 py-2.5 text-[11px] font-medium text-slate">
                           {new Date(mov.fecha_hora).toLocaleString('es-PE', {
                             dateStyle: 'short',
                             timeStyle: 'short',
@@ -529,10 +544,9 @@ export function LotesKardexPage() {
                                   ? 'blue'
                                   : 'tangerine'
                             }
-                            mono
                             withDot={false}
                           >
-                            {mov.tipo_movimiento}
+                            {MOVIMIENTO_AMIGABLE[mov.tipo_movimiento] || mov.tipo_movimiento}
                           </StatusBadge>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right font-geist-mono font-bold">
@@ -550,7 +564,7 @@ export function LotesKardexPage() {
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-right font-geist-mono font-bold text-midnight-ink">
-                          {mov.stock_resultante}
+                          {mov.stock_resultante} unds
                         </td>
                         <td className="px-3 py-2.5 text-[12px] font-medium text-slate">
                           {mov.glosa || '—'}
@@ -569,8 +583,8 @@ export function LotesKardexPage() {
       <Modal
         isOpen={modalIngresoOpen}
         onClose={() => setModalIngresoOpen(false)}
-        title="Registrar Ingreso de Lote (Compra)"
-        subtitle="Inserta un nuevo lote con fecha de vencimiento y genera automáticamente el asiento COMPRA en el Kardex."
+        title="Registrar Nuevo Lote Recibido"
+        subtitle="Ingresa los datos de la mercadería recibida del proveedor o droguería."
       >
         <form onSubmit={handleRegistrarLote} className="space-y-3.5">
           <div>
@@ -583,11 +597,11 @@ export function LotesKardexPage() {
               onChange={(e) =>
                 setFormLote({ ...formLote, producto_id: e.target.value })
               }
-              className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-2 text-[13px]"
+              className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-2 text-[13px]"
             >
               {productos.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.nombre} ({p.unidades_por_caja} u/caja)
+                  {p.nombre} (Caja de {p.unidades_por_caja} unds)
                 </option>
               ))}
             </select>
@@ -596,7 +610,7 @@ export function LotesKardexPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Número de Lote *
+                Código del Lote *
               </label>
               <input
                 type="text"
@@ -606,7 +620,7 @@ export function LotesKardexPage() {
                   setFormLote({ ...formLote, numero_lote: e.target.value })
                 }
                 placeholder="LOT-2026-09A"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
               />
             </div>
 
@@ -621,7 +635,7 @@ export function LotesKardexPage() {
                 onChange={(e) =>
                   setFormLote({ ...formLote, fecha_vencimiento: e.target.value })
                 }
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
               />
             </div>
           </div>
@@ -629,7 +643,7 @@ export function LotesKardexPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Stock Inicial (en Unidades Mínimas) *
+                Cantidad Total de Unidades *
               </label>
               <input
                 type="number"
@@ -639,13 +653,13 @@ export function LotesKardexPage() {
                 onChange={(e) =>
                   setFormLote({ ...formLote, stock_inicial: e.target.value })
                 }
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
               />
             </div>
 
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Costo Compra Unitario (S/) *
+                Costo de Compra por Unidad (S/) *
               </label>
               <input
                 type="number"
@@ -659,14 +673,14 @@ export function LotesKardexPage() {
                     costo_compra_unitario: e.target.value,
                   })
                 }
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
               />
             </div>
           </div>
 
           <div>
             <label className="block text-[12px] font-semibold text-midnight-ink">
-              Glosa de Auditoría Kardex
+              Nota o Número de Factura
             </label>
             <input
               type="text"
@@ -674,60 +688,60 @@ export function LotesKardexPage() {
               onChange={(e) =>
                 setFormLote({ ...formLote, glosa: e.target.value })
               }
-              className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+              className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
             />
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-ash pt-3">
+          <div className="flex justify-end gap-2 border-t border-[#e5e0d8] pt-3">
             <button
               type="button"
               onClick={() => setModalIngresoOpen(false)}
-              className="rounded-[8px] border border-ash bg-canvas-white px-4 py-2 text-[13px] font-semibold text-midnight-ink hover:bg-paper-mist"
+              className="rounded-[8px] border border-[#e5e0d8] bg-canvas-white px-4 py-2 text-[13px] font-semibold text-midnight-ink hover:bg-[#faf8f5]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={procesando}
-              className="rounded-[8px] bg-electric-blue px-4 py-2 text-[13px] font-semibold text-canvas-white hover:bg-deep-sapphire disabled:opacity-50"
+              className="rounded-[8px] bg-[#0d9488] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#0f766e] disabled:opacity-50"
             >
-              {procesando ? 'Registrando...' : 'Ingresar Lote al Kardex'}
+              {procesando ? 'Guardando...' : 'Guardar Lote'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal: Merma por Vencimiento o Ajuste de Inventario */}
+      {/* Modal: Retiro o Ajuste */}
       <Modal
         isOpen={modalAjusteOpen}
         onClose={() => setModalAjusteOpen(false)}
-        title={`Ajustar Stock · Lote ${loteParaAjuste?.numero_lote || ''}`}
-        subtitle="Todo descuento por merma o ajuste genera un asiento auditable e inmutable en el Kardex."
+        title={`Retirar o Ajustar Unidades · Lote ${loteParaAjuste?.numero_lote || ''}`}
+        subtitle="Registra el motivo por el cual se descuentan unidades de este lote."
       >
         <form onSubmit={handleRegistrarAjuste} className="space-y-3.5">
           <div>
             <label className="block text-[12px] font-semibold text-midnight-ink">
-              Tipo de Movimiento Kardex *
+              Motivo del Descuento *
             </label>
             <select
               value={formAjuste.tipo_movimiento}
               onChange={(e) =>
                 setFormAjuste({ ...formAjuste, tipo_movimiento: e.target.value })
               }
-              className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-2 font-geist-mono text-[13px]"
+              className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-2 text-[13px]"
             >
               <option value="MERMA_VENCIMIENTO">
-                MERMA_VENCIMIENTO (Baja por deterioro o vencimiento próximo)
+                Retiro por vencimiento próximo o deterioro
               </option>
               <option value="AJUSTE_INVENTARIO">
-                AJUSTE_INVENTARIO (Cuadre de arqueo físico)
+                Corrección por conteo físico en estante
               </option>
             </select>
           </div>
 
           <div>
             <label className="block text-[12px] font-semibold text-midnight-ink">
-              Unidades Mínimas a Descontar (Disponible: {loteParaAjuste?.stock_actual || 0}) *
+              Cantidad de Unidades a Retirar (Disponibles: {loteParaAjuste?.stock_actual || 0}) *
             </label>
             <input
               type="number"
@@ -738,13 +752,13 @@ export function LotesKardexPage() {
               onChange={(e) =>
                 setFormAjuste({ ...formAjuste, cantidad_unidades: e.target.value })
               }
-              className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+              className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
             />
           </div>
 
           <div>
             <label className="block text-[12px] font-semibold text-midnight-ink">
-              Glosa / Motivo Obligatorio *
+              Explicación o Detalle *
             </label>
             <input
               type="text"
@@ -754,25 +768,25 @@ export function LotesKardexPage() {
               onChange={(e) =>
                 setFormAjuste({ ...formAjuste, glosa: e.target.value })
               }
-              placeholder="Ej. Retiro de blíster deteriorado en inspección sanitaria"
-              className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+              placeholder="Ej. Caja dañada o retiro preventivo de mostrador"
+              className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
             />
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-ash pt-3">
+          <div className="flex justify-end gap-2 border-t border-[#e5e0d8] pt-3">
             <button
               type="button"
               onClick={() => setModalAjusteOpen(false)}
-              className="rounded-[8px] border border-ash bg-canvas-white px-4 py-2 text-[13px] font-semibold text-midnight-ink hover:bg-paper-mist"
+              className="rounded-[8px] border border-[#e5e0d8] bg-canvas-white px-4 py-2 text-[13px] font-semibold text-midnight-ink hover:bg-[#faf8f5]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={procesando}
-              className="rounded-[8px] bg-electric-blue px-4 py-2 text-[13px] font-semibold text-canvas-white hover:bg-deep-sapphire disabled:opacity-50"
+              className="rounded-[8px] bg-[#0d9488] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#0f766e] disabled:opacity-50"
             >
-              {procesando ? 'Procesando...' : 'Confirmar Descuento Auditado'}
+              {procesando ? 'Guardando...' : 'Confirmar Retiro'}
             </button>
           </div>
         </form>
