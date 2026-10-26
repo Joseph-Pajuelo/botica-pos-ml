@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  ScanBarcode,
   Search,
   Plus,
   Minus,
@@ -12,30 +11,37 @@ import {
   Smartphone,
   Printer,
   Clock,
-  Zap,
   Receipt,
+  Sparkles,
+  ShoppingBag,
 } from 'lucide-react'
 import { productosApi, posApi, getErrorMessage } from '../services/api'
 import { useBarcodeScanner, useKeyboardShortcuts } from '../hooks'
 import { StatusBadge, ThermalTicket } from '../components'
 
-const CODIGOS_RAPIDOS_DEMO = [
+const MEDICAMENTOS_FRECUENTES = [
   { codigo: '7750100000011', nombre: 'Paracetamol 500mg' },
   { codigo: '7750100000028', nombre: 'Amoxicilina 500mg' },
   { codigo: '7750100000035', nombre: 'Ibuprofeno 400mg' },
   { codigo: '7750100000042', nombre: 'Panadol Antigripal' },
   { codigo: '7750100000066', nombre: 'Loratadina 10mg' },
-  { codigo: '7750100000080', nombre: 'Ambroxol Jbe' },
+  { codigo: '7750100000080', nombre: 'Ambroxol Jarabe' },
 ]
 
 const METODOS_PAGO = [
   { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
   { id: 'BILLETERA_DIGITAL', label: 'Yape / Plin', icon: Smartphone },
-  { id: 'TARJETA', label: 'Tarjeta POS', icon: CreditCard },
+  { id: 'TARJETA', label: 'Tarjeta', icon: CreditCard },
 ]
 
+const PAGO_AMIGABLE = {
+  EFECTIVO: 'Efectivo',
+  BILLETERA_DIGITAL: 'Yape / Plin',
+  TARJETA: 'Tarjeta',
+}
+
 /**
- * Calcula las unidades mínimas a descontar del lote FEFO y el subtotal según la presentación.
+ * Calcula las unidades a descontar y el subtotal según la presentación elegida.
  */
 function calcularItemPresentacion(producto, tipoPresentacion, cantidadPresentacion) {
   const cant = Math.max(1, Number(cantidadPresentacion) || 1)
@@ -57,10 +63,9 @@ function calcularItemPresentacion(producto, tipoPresentacion, cantidadPresentaci
       subtotal: +(cant * precio).toFixed(2),
     }
   }
-  // UNIDAD
   const precio = Number(
     producto.precio_venta_unitario ||
-      (Number(producto.precio_venta_caja || 0) / Number(producto.unidades_por_caja || 1))
+      Number(producto.precio_venta_caja || 0) / Number(producto.unidades_por_caja || 1)
   )
   return {
     precioUnitario: +precio.toFixed(2),
@@ -69,26 +74,23 @@ function calcularItemPresentacion(producto, tipoPresentacion, cantidadPresentaci
   }
 }
 
-export function POSPage({ onBarcodeEvent }) {
-  const barcodeInputRef = useRef(null)
-  const [barcodeInput, setBarcodeInput] = useState('')
+export function POSPage() {
+  const searchInputRef = useRef(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [catalogo, setCatalogo] = useState([])
   const [loadingCatalogo, setLoadingCatalogo] = useState(false)
 
-  // Carrito de compras FEFO
+  // Pedido actual del cliente
   const [carrito, setCarrito] = useState([])
   const [metodoPago, setMetodoPago] = useState('EFECTIVO')
   const [montoRecibido, setMontoRecibido] = useState('')
   const [procesandoVenta, setProcesandoVenta] = useState(false)
 
-  // Estado de respuesta del lector HID (<100ms)
-  const [lastScanLatency, setLastScanLatency] = useState(null)
-  const [lastScannedProduct, setLastScannedProduct] = useState(null)
+  // Mensajes amigables
   const [feedbackError, setFeedbackError] = useState(null)
   const [feedbackSuccess, setFeedbackSuccess] = useState(null)
 
-  // Ticket emitido e historial reciente
+  // Comprobante emitido e historial reciente
   const [ventaEmitida, setVentaEmitida] = useState(null)
   const [ventasRecientes, setVentasRecientes] = useState([])
 
@@ -108,7 +110,7 @@ export function POSPage({ onBarcodeEvent }) {
     try {
       const [prods, ventas] = await Promise.all([
         productosApi.listar({ buscar: termino, limit: 60 }),
-        posApi.listarVentas({ limit: 8 }),
+        posApi.listarVentas({ limit: 6 }),
       ])
       setCatalogo(prods)
       setVentasRecientes(ventas)
@@ -123,7 +125,7 @@ export function POSPage({ onBarcodeEvent }) {
     cargarDatosMostrador()
   }, [cargarDatosMostrador])
 
-  // Agregar o incrementar un producto en el carrito validando lote FEFO
+  // Agregar o incrementar un medicamento en el pedido
   const agregarProductoAlCarrito = useCallback((productoData, presentacionInicial = null) => {
     setFeedbackError(null)
     const presentacionPorDefecto =
@@ -156,7 +158,7 @@ export function POSPage({ onBarcodeEvent }) {
     })
   }, [])
 
-  // Escaneo directo por código de barras (USB HID o simulador)
+  // Lectura automática por código de barras
   const procesarCodigoBarras = useCallback(
     async (codigo) => {
       const clean = String(codigo || '').trim()
@@ -164,43 +166,33 @@ export function POSPage({ onBarcodeEvent }) {
       setFeedbackError(null)
 
       try {
-        const { producto, latencyMs } = await productosApi.escanearBarcode(clean)
-        setLastScanLatency(latencyMs)
-        setLastScannedProduct(producto)
-        onBarcodeEvent?.(clean)
-
+        const { producto } = await productosApi.escanearBarcode(clean)
         if (producto.stock_total_vigente <= 0) {
           setFeedbackError(
-            `El producto "${producto.nombre}" (${clean}) no tiene lotes FEFO vigentes con stock disponible.`
+            `El medicamento "${producto.nombre}" no cuenta con stock disponible en este momento.`
           )
           return
         }
-
         agregarProductoAlCarrito(producto, 'CAJA')
-        setBarcodeInput('')
+        setSearchQuery('')
       } catch (err) {
         setFeedbackError(getErrorMessage(err))
       }
     },
-    [agregarProductoAlCarrito, onBarcodeEvent]
+    [agregarProductoAlCarrito]
   )
 
-  // Hook global para lector USB HID
   const { triggerScan } = useBarcodeScanner({
     onScan: procesarCodigoBarras,
     enabled: true,
   })
 
-  // Seleccionar un producto desde el listado de búsqueda enriqueciéndolo con su info FEFO
+  // Seleccionar un medicamento de la lista
   const seleccionarProductoCatalogo = async (prod) => {
     try {
-      const { producto, latencyMs } = await productosApi.escanearBarcode(prod.codigo_barras)
-      setLastScanLatency(latencyMs)
-      setLastScannedProduct(producto)
+      const { producto } = await productosApi.escanearBarcode(prod.codigo_barras)
       if (producto.stock_total_vigente <= 0) {
-        setFeedbackError(
-          `"${producto.nombre}" tiene 0 unidades disponibles en lotes vigentes FEFO.`
-        )
+        setFeedbackError(`"${producto.nombre}" no tiene unidades disponibles para la venta.`)
         return
       }
       agregarProductoAlCarrito(producto, 'CAJA')
@@ -244,10 +236,10 @@ export function POSPage({ onBarcodeEvent }) {
     setFeedbackError(null)
   }, [])
 
-  // Cálculos totales del carrito
+  // Cálculos totales del pedido
   const resumenCarrito = useMemo(() => {
     let totalSoles = 0
-    let totalUnidadesMinimas = 0
+    let totalUnidades = 0
 
     const itemsCalculados = carrito.map((item) => {
       const calc = calcularItemPresentacion(
@@ -256,7 +248,7 @@ export function POSPage({ onBarcodeEvent }) {
         item.cantidad_presentacion
       )
       totalSoles += calc.subtotal
-      totalUnidadesMinimas += calc.unidadesMinimas
+      totalUnidades += calc.unidadesMinimas
       return {
         ...item,
         ...calc,
@@ -266,7 +258,7 @@ export function POSPage({ onBarcodeEvent }) {
     return {
       items: itemsCalculados,
       total: +totalSoles.toFixed(2),
-      totalUnidadesMinimas,
+      totalUnidades,
     }
   }, [carrito])
 
@@ -276,8 +268,8 @@ export function POSPage({ onBarcodeEvent }) {
     return +(recibido - resumenCarrito.total).toFixed(2)
   }, [montoRecibido, resumenCarrito.total])
 
-  // Procesar Venta Transaccional FEFO
-  const confirmarVentaFEFO = useCallback(async () => {
+  // Confirmar y registrar la venta
+  const confirmarVenta = useCallback(async () => {
     if (carrito.length === 0 || procesandoVenta) return
     setProcesandoVenta(true)
     setFeedbackError(null)
@@ -296,7 +288,7 @@ export function POSPage({ onBarcodeEvent }) {
       const ventaCreada = await posApi.registrarVenta(payload)
       setVentaEmitida(ventaCreada)
       setFeedbackSuccess(
-        `Venta FEFO #${ventaCreada.id} procesada por S/ ${Number(ventaCreada.total).toFixed(2)}`
+        `¡Venta #${ventaCreada.id} registrada por S/ ${Number(ventaCreada.total).toFixed(2)}!`
       )
       setCarrito([])
       setMontoRecibido('')
@@ -308,9 +300,9 @@ export function POSPage({ onBarcodeEvent }) {
     }
   }, [carrito, procesandoVenta, metodoPago, cargarDatosMostrador, searchQuery])
 
-  // Atajos de teclado de mostrador (F6, F7, F9, F10)
+  // Atajos discretos para agilidad en caja
   useKeyboardShortcuts({
-    F6: () => barcodeInputRef.current?.focus(),
+    F6: () => searchInputRef.current?.focus(),
     F7: () => {
       setMetodoPago((prev) => {
         const orden = ['EFECTIVO', 'BILLETERA_DIGITAL', 'TARJETA']
@@ -319,54 +311,38 @@ export function POSPage({ onBarcodeEvent }) {
       })
     },
     F9: () => limpiarCarrito(),
-    F10: () => confirmarVentaFEFO(),
+    F10: () => confirmarVenta(),
   })
 
-  const handleSearchSubmit = (e) => {
+  // Un solo buscador inteligente: si es un código numérico y presiona Enter, lo agrega directo
+  const handleUnifiedSearchSubmit = (e) => {
     e.preventDefault()
-    cargarDatosMostrador(searchQuery)
-  }
-
-  const handleBarcodeFormSubmit = (e) => {
-    e.preventDefault()
-    if (barcodeInput.trim()) {
-      triggerScan(barcodeInput.trim())
+    const q = searchQuery.trim()
+    if (!q) return
+    if (/^\d{6,14}$/.test(q)) {
+      triggerScan(q)
+    } else if (catalogo.length === 1) {
+      seleccionarProductoCatalogo(catalogo[0])
+    } else {
+      cargarDatosMostrador(q)
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Encabezado con alto contraste */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-ash bg-canvas-white px-5 py-4 shadow-xs">
-        <div>
-          <h1 className="font-satoshi text-[30px] font-bold leading-[1.15] text-midnight-ink">
-            Punto de Venta Farmacéutico (FEFO)
-          </h1>
-          <p className="mt-1 text-[14px] text-slate">
-            Despacho rápido con descuento automático del lote próximo a vencer y fraccionamiento por presentación.
-          </p>
-        </div>
-
-        {/* Barra de Atajos Rápidos (Geist Mono) */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#93c5fd] bg-[#eff6ff] px-3 py-1 font-geist-mono text-[11px] font-medium text-midnight-ink">
-            <kbd className="font-bold text-electric-blue">F6</kbd> Escanear HID
-          </span>
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#93c5fd] bg-[#eff6ff] px-3 py-1 font-geist-mono text-[11px] font-medium text-midnight-ink">
-            <kbd className="font-bold text-electric-blue">F7</kbd> Cambiar Pago
-          </span>
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#93c5fd] bg-[#eff6ff] px-3 py-1 font-geist-mono text-[11px] font-medium text-midnight-ink">
-            <kbd className="font-bold text-electric-blue">F9</kbd> Vaciar
-          </span>
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#86efac] bg-[#f0fdf4] px-3 py-1 font-geist-mono text-[11px] font-medium text-midnight-ink">
-            <kbd className="font-bold text-vivid-green">F10</kbd> Cobrar Venta
-          </span>
-        </div>
+      {/* Encabezado Cálido y Guiado (Sin siglas técnicas como FEFO o HID) */}
+      <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white px-6 py-4 shadow-2xs">
+        <h1 className="font-satoshi text-[28px] font-bold leading-tight text-midnight-ink">
+          Atención y Venta en Mostrador
+        </h1>
+        <p className="mt-1 text-[14px] text-slate">
+          Busca el medicamento por su nombre, principio activo o pásalo por el lector de código de barras para armar el pedido del cliente.
+        </p>
       </div>
 
-      {/* Alertas de Estado */}
+      {/* Alertas Amigables */}
       {feedbackError && (
-        <div className="flex items-center justify-between rounded-[12px] border border-[#fca5a5] bg-[#fee2e2] px-4 py-3 text-[14px] font-medium text-[#b91c1c] shadow-xs">
+        <div className="flex items-center justify-between rounded-[12px] border border-[#fca5a5] bg-[#fee2e2] px-4 py-3 text-[14px] font-medium text-[#b91c1c] shadow-2xs">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{feedbackError}</span>
@@ -374,15 +350,15 @@ export function POSPage({ onBarcodeEvent }) {
           <button
             type="button"
             onClick={() => setFeedbackError(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
-            Cerrar
+            Entendido
           </button>
         </div>
       )}
 
       {feedbackSuccess && (
-        <div className="flex items-center justify-between rounded-[12px] border border-[#86efac] bg-[#dcfce7] px-4 py-3 text-[14px] font-medium text-[#15803d] shadow-xs">
+        <div className="flex items-center justify-between rounded-[12px] border border-[#86efac] bg-[#dcfce7] px-4 py-3 text-[14px] font-medium text-[#15803d] shadow-2xs">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{feedbackSuccess}</span>
@@ -390,186 +366,137 @@ export function POSPage({ onBarcodeEvent }) {
           <button
             type="button"
             onClick={() => setFeedbackSuccess(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
-            OK
+            Cerrar
           </button>
         </div>
       )}
 
-      {/* Grilla Principal Mostrador: Izquierda (Lector HID + Catálogo) / Derecha (Carrito FEFO + Cobro) */}
+      {/* Grilla Guiada en 2 Pasos Simples: Paso 1 (Catálogo Unificado) y Paso 2 (Pedido del Cliente) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* COLUMNA IZQUIERDA (7 cols): Lector Código de Barras y Buscador */}
-        <div className="space-y-4 lg:col-span-7">
-          {/* Tarjeta Lector USB HID */}
-          <div className="rounded-[12px] border border-ash border-l-4 border-l-electric-blue bg-canvas-white p-4 shadow-xs">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="pos-barcode-input"
-                className="flex items-center gap-2 text-[14px] font-bold text-midnight-ink"
-              >
-                <ScanBarcode className="h-4 w-4 text-electric-blue" />
-                Lector de Código de Barras USB (HID)
-              </label>
-              {lastScanLatency !== null && (
-                <StatusBadge
-                  variant={lastScanLatency <= 100 ? 'mint' : 'tangerine'}
-                  mono
-                >
-                  <Zap className="mr-1 h-3 w-3" />
-                  Respuesta API: {lastScanLatency} ms
-                </StatusBadge>
-              )}
-            </div>
-
-            <form onSubmit={handleBarcodeFormSubmit} className="mt-2.5 flex gap-2">
-              <input
-                id="pos-barcode-input"
-                ref={barcodeInputRef}
-                data-barcode-input="true"
-                type="text"
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                placeholder="Dispare el lector USB HID o ingrese EAN-13 y presione Enter..."
-                className="w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3.5 py-2 font-geist-mono text-[14px] font-medium text-midnight-ink placeholder:text-fog focus:border-electric-blue focus:outline-none focus:ring-2 focus:ring-electric-blue/20"
-              />
-              <button
-                type="submit"
-                className="shrink-0 whitespace-nowrap rounded-[8px] bg-electric-blue px-4 py-2 text-[14px] font-semibold text-canvas-white shadow-xs transition hover:bg-deep-sapphire"
-              >
-                Escanear
-              </button>
-            </form>
-
-            {/* Simulador de ráfagas HID para pruebas rápidas */}
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-slate">
-                Prueba rápida HID:
-              </span>
-              {CODIGOS_RAPIDOS_DEMO.map((item) => (
-                <button
-                  key={item.codigo}
-                  type="button"
-                  onClick={() => triggerScan(item.codigo)}
-                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[#93c5fd] bg-[#eff6ff] px-2.5 py-0.5 font-geist-mono text-[11px] font-medium text-midnight-ink transition hover:bg-electric-blue hover:text-canvas-white"
-                  title={`Simular lectura láser HID de ${item.nombre}`}
-                >
-                  <span className="font-bold text-electric-blue group-hover:text-white">
-                    {item.codigo.slice(-4)}
-                  </span>
-                  <span>· {item.nombre}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Ficha instantánea del último producto escaneado */}
-            {lastScannedProduct && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[8px] border border-[#93c5fd] bg-[#eff6ff] px-3 py-2 text-[12px]">
-                <div>
-                  <span className="font-bold text-midnight-ink">
-                    Último escaneo: {lastScannedProduct.nombre}
-                  </span>
-                  <span className="ml-2 font-geist-mono font-medium text-slate">
-                    ({lastScannedProduct.codigo_barras})
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 font-geist-mono">
-                  <StatusBadge variant="mint" mono>
-                    Lote FEFO: {lastScannedProduct.lote_fefo_numero || 'N/A'}
-                  </StatusBadge>
-                  <StatusBadge variant="blue" mono withDot={false}>
-                    Vence: {lastScannedProduct.proximo_vencimiento || 'Sin lote'}
-                  </StatusBadge>
-                  <StatusBadge variant="neutral" mono withDot={false}>
-                    Stock: {lastScannedProduct.stock_total_vigente} u.mín
-                  </StatusBadge>
-                </div>
+        {/* PASO 1 (7 cols): Buscador Unificado + Lista de Medicamentos */}
+        <div className="lg:col-span-7">
+          <div className="rounded-[14px] border border-[#e5e0d8] border-t-4 border-t-[#0d9488] bg-canvas-white p-5 shadow-2xs">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#0d9488] text-[12px] font-bold text-white">
+                  1
+                </span>
+                <h2 className="text-[16px] font-bold text-midnight-ink">
+                  Buscar o Escanear Medicamento
+                </h2>
               </div>
-            )}
-          </div>
+              <span className="text-[12px] text-slate">
+                Lector de código de barras listo
+              </span>
+            </div>
 
-          {/* Buscador Manual y Catálogo Rápido */}
-          <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
-            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+            {/* Barra Única de Búsqueda y Código de Barras */}
+            <form onSubmit={handleUnifiedSearchSubmit} className="flex gap-2">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-electric-blue" />
+                <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-[#0d9488]" />
                 <input
+                  ref={searchInputRef}
+                  data-barcode-input="true"
                   type="text"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value)
                     cargarDatosMostrador(e.target.value)
                   }}
-                  placeholder="Buscar por nombre comercial o principio activo (ej. Paracetamol, Amoxicilina)..."
-                  className="w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white py-2 pl-9 pr-3 text-[14px] font-medium text-midnight-ink placeholder:text-fog focus:border-electric-blue focus:outline-none"
+                  placeholder="Escribe el nombre (ej. Paracetamol, Ibuprofeno) o escanea el código..."
+                  className="w-full rounded-[10px] border-2 border-[#cbd5e1] bg-[#faf8f5] py-2.5 pl-10 pr-4 text-[14px] font-medium text-midnight-ink placeholder:text-steel focus:border-[#0d9488] focus:bg-white focus:outline-none"
                 />
               </div>
+              <button
+                type="submit"
+                className="shrink-0 whitespace-nowrap rounded-[10px] bg-[#0d9488] px-4 py-2.5 text-[14px] font-semibold text-white shadow-2xs transition hover:bg-[#0f766e]"
+              >
+                Buscar
+              </button>
             </form>
 
-            <div className="mt-3 max-h-[420px] overflow-x-auto overflow-y-auto rounded-[8px] border border-ash">
+            {/* Accesos rápidos a medicamentos frecuentes */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate">
+                <Sparkles className="h-3 w-3 text-[#d97706]" />
+                Más pedidos:
+              </span>
+              {MEDICAMENTOS_FRECUENTES.map((item) => (
+                <button
+                  key={item.codigo}
+                  type="button"
+                  onClick={() => triggerScan(item.codigo)}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-[#ccfbf1] bg-[#f0fdfa] px-3 py-1 text-[11.5px] font-semibold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
+                  title={`Agregar ${item.nombre} al pedido`}
+                >
+                  <span>+ {item.nombre}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tabla Limpia de Medicamentos */}
+            <div className="mt-4 max-h-[450px] overflow-x-auto overflow-y-auto rounded-[10px] border border-[#e5e0d8]">
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-ash bg-paper-mist text-[11px] font-bold uppercase tracking-wider text-slate">
-                    <th className="px-3 py-2.5">Medicamento / Laboratorio</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Caja</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Blíster</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Unidad</th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Acción</th>
+                  <tr className="border-b border-[#e5e0d8] bg-[#faf8f5] text-[11px] font-bold uppercase tracking-wider text-slate">
+                    <th className="px-3.5 py-2.5">Medicamento / Laboratorio</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Caja</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Blíster</th>
+                    <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Unidad</th>
+                    <th className="whitespace-nowrap px-3.5 py-2.5 text-right">Agregar</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ash text-[13px]">
+                <tbody className="divide-y divide-[#e5e0d8] text-[13px]">
                   {loadingCatalogo ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center font-medium text-slate">
-                        Consultando catálogo de medicamentos...
+                      <td colSpan={5} className="py-10 text-center font-medium text-slate">
+                        Cargando lista de medicamentos...
                       </td>
                     </tr>
                   ) : catalogo.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate">
-                        No hay productos registrados. Usa el botón superior{' '}
-                        <strong className="text-midnight-ink">Datos Demo</strong> para inyectar el catálogo semilla.
+                      <td colSpan={5} className="py-10 text-center text-slate">
+                        No se encontraron medicamentos con ese nombre.
                       </td>
                     </tr>
                   ) : (
                     catalogo.map((prod) => (
                       <tr
                         key={prod.id}
-                        className="group transition hover:bg-[#eff6ff]/60"
+                        className="group transition hover:bg-[#f0fdfa]/70"
                       >
-                        <td className="px-3 py-2.5">
-                          <div className="font-semibold text-midnight-ink">
+                        <td className="px-3.5 py-3">
+                          <div className="font-bold text-midnight-ink">
                             {prod.nombre}
                           </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate">
-                            <span className="rounded bg-paper-mist px-1.5 py-0.2 font-geist-mono font-medium text-slate">
-                              {prod.codigo_barras}
-                            </span>
-                            <span>· {prod.principio_activo || 'Genérico'}</span>
-                            <span>· {prod.laboratorio || 'Lab'}</span>
-                            <span className="font-geist-mono font-semibold text-electric-blue">
-                              (Caja x {prod.unidades_por_caja}u)
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-slate">
+                            <span>{prod.principio_activo || 'Genérico'}</span>
+                            <span>· {prod.laboratorio || 'Laboratorio'}</span>
+                            <span className="font-semibold text-[#0d9488]">
+                              (Caja de {prod.unidades_por_caja} unds)
                             </span>
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right font-geist-mono text-[13px] font-bold text-midnight-ink">
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-bold text-midnight-ink">
                           S/ {Number(prod.precio_venta_caja).toFixed(2)}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right font-geist-mono text-[13px] font-semibold text-deep-sapphire">
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#0f766e]">
                           {prod.precio_venta_blister
                             ? `S/ ${Number(prod.precio_venta_blister).toFixed(2)}`
                             : '—'}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right font-geist-mono text-[13px] font-semibold text-vivid-green">
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#15803d]">
                           {prod.precio_venta_unitario
                             ? `S/ ${Number(prod.precio_venta_unitario).toFixed(2)}`
                             : '—'}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                        <td className="whitespace-nowrap px-3.5 py-3 text-right">
                           <button
                             type="button"
                             onClick={() => seleccionarProductoCatalogo(prod)}
-                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#93c5fd] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-semibold text-electric-blue transition hover:bg-electric-blue hover:text-canvas-white"
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#99f6e4] bg-[#f0fdfa] px-3 py-1.5 text-[12px] font-semibold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
                           >
                             <Plus className="h-3.5 w-3.5" />
                             Agregar
@@ -584,21 +511,25 @@ export function POSPage({ onBarcodeEvent }) {
           </div>
         </div>
 
-        {/* COLUMNA DERECHA (5 cols): Carrito de Despacho FEFO y Liquidación */}
+        {/* PASO 2 (5 cols): Pedido del Cliente y Cobro */}
         <div className="space-y-4 lg:col-span-5">
-          <div className="rounded-[12px] border border-ash border-t-4 border-t-vivid-green bg-canvas-white p-4 shadow-xs">
-            <div className="flex items-center justify-between border-b border-ash pb-3">
-              <div>
-                <h2 className="text-[17px] font-bold text-midnight-ink">
-                  Orden de Despacho Actual
-                </h2>
-                <p className="font-geist-mono text-[12px] font-medium text-slate">
-                  {resumenCarrito.items.length} ítems ·{' '}
-                  <span className="font-semibold text-electric-blue">
-                    {resumenCarrito.totalUnidadesMinimas} u. mínimas
-                  </span>{' '}
-                  a descontar
-                </p>
+          <div className="rounded-[14px] border border-[#e5e0d8] border-t-4 border-t-[#15803d] bg-canvas-white p-5 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-[#e5e0d8] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#15803d] text-[12px] font-bold text-white">
+                  2
+                </span>
+                <div>
+                  <h2 className="text-[16px] font-bold text-midnight-ink">
+                    Pedido del Cliente
+                  </h2>
+                  <p className="text-[12px] text-slate">
+                    {resumenCarrito.items.length} medicamento(s) ·{' '}
+                    <span className="font-semibold text-[#0d9488]">
+                      {resumenCarrito.totalUnidades} unidades en total
+                    </span>
+                  </p>
+                </div>
               </div>
               {carrito.length > 0 && (
                 <button
@@ -607,21 +538,21 @@ export function POSPage({ onBarcodeEvent }) {
                   className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#fca5a5] bg-[#fef2f2] px-2.5 py-1 text-[12px] font-semibold text-[#b91c1c] hover:bg-[#fee2e2]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  Vaciar (F9)
+                  Limpiar
                 </button>
               )}
             </div>
 
-            {/* Lista de Ítems en el Carrito */}
-            <div className="my-3 max-h-[320px] space-y-2.5 overflow-y-auto pr-1">
+            {/* Lista de Medicamentos en el Pedido */}
+            <div className="my-3.5 max-h-[320px] space-y-2.5 overflow-y-auto pr-1">
               {resumenCarrito.items.length === 0 ? (
-                <div className="rounded-[12px] border-2 border-dashed border-ash bg-paper-mist/70 py-10 text-center">
-                  <ScanBarcode className="mx-auto h-8 w-8 text-electric-blue/60" />
+                <div className="rounded-[12px] border-2 border-dashed border-[#e5e0d8] bg-[#faf8f5] py-10 text-center">
+                  <ShoppingBag className="mx-auto h-8 w-8 text-[#0d9488]/60" />
                   <p className="mt-2 text-[14px] font-semibold text-slate">
-                    Carrito de despacho vacío
+                    Aún no has agregado medicamentos
                   </p>
-                  <p className="mt-0.5 px-4 text-[12px] text-fog">
-                    Escanee un código de barras USB o haga clic en &ldquo;Agregar&rdquo; en el catálogo izquierdo.
+                  <p className="mt-0.5 px-4 text-[12px] text-steel">
+                    Haz clic en el botón &ldquo;+ Agregar&rdquo; de la lista izquierda o usa el lector de código de barras.
                   </p>
                 </div>
               ) : (
@@ -630,81 +561,79 @@ export function POSPage({ onBarcodeEvent }) {
                   return (
                     <div
                       key={item.key}
-                      className="rounded-[12px] border border-ash bg-[#f8fafc] p-3 shadow-2xs"
+                      className="rounded-[12px] border border-[#e5e0d8] bg-[#faf8f5] p-3"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-[14px] font-bold text-midnight-ink">
                             {prod.nombre}
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5 font-geist-mono text-[11px] text-slate">
-                            <span className="font-medium">SKU: {prod.codigo_barras}</span>
-                            {prod.lote_fefo_numero && (
-                              <span className="whitespace-nowrap rounded-full border border-[#86efac] bg-[#dcfce7] px-2 py-0.5 font-semibold text-[#15803d]">
-                                FEFO: {prod.lote_fefo_numero} ({prod.proximo_vencimiento})
+                          {prod.lote_fefo_numero && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className="whitespace-nowrap rounded-full border border-[#86efac] bg-[#dcfce7] px-2.5 py-0.5 font-semibold text-[#15803d]">
+                                Lote a entregar: {prod.lote_fefo_numero} (Vence: {prod.proximo_vencimiento})
                               </span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                         <button
                           type="button"
                           onClick={() => eliminarItemCarrito(idx)}
                           className="rounded-[6px] p-1 text-slate hover:bg-[#fee2e2] hover:text-[#dc2626]"
-                          title="Quitar ítem"
+                          title="Quitar medicamento"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
 
-                      {/* Controles de Fraccionamiento y Cantidad */}
-                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-ash pt-2.5">
-                        {/* Selector de Presentación (Caja / Blíster / Unidad) */}
-                        <div className="inline-flex rounded-[8px] border border-ash bg-canvas-white p-0.5">
+                      {/* Selector de Presentación y Cantidad */}
+                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-[#e5e0d8] pt-2.5">
+                        <div className="inline-flex rounded-[8px] border border-[#e5e0d8] bg-canvas-white p-0.5">
                           <button
                             type="button"
                             onClick={() => cambiarPresentacionItem(idx, 'CAJA')}
-                            className={`rounded-[6px] px-2.5 py-1 font-geist-mono text-[11px] font-semibold transition ${
+                            className={`rounded-[6px] px-2.5 py-1 text-[11.5px] font-semibold transition ${
                               item.tipo_presentacion === 'CAJA'
-                                ? 'bg-electric-blue text-canvas-white shadow-2xs'
+                                ? 'bg-[#0d9488] text-white shadow-2xs'
                                 : 'text-slate hover:text-midnight-ink'
                             }`}
                           >
-                            CAJA
+                            Caja
                           </button>
                           <button
                             type="button"
                             disabled={!prod.fraccionable || !prod.precio_venta_blister}
                             onClick={() => cambiarPresentacionItem(idx, 'BLISTER')}
-                            className={`rounded-[6px] px-2.5 py-1 font-geist-mono text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                            className={`rounded-[6px] px-2.5 py-1 text-[11.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
                               item.tipo_presentacion === 'BLISTER'
-                                ? 'bg-electric-blue text-canvas-white shadow-2xs'
+                                ? 'bg-[#0d9488] text-white shadow-2xs'
                                 : 'text-slate hover:text-midnight-ink'
                             }`}
                           >
-                            BLÍSTER
+                            Blíster
                           </button>
                           <button
                             type="button"
                             disabled={!prod.fraccionable}
                             onClick={() => cambiarPresentacionItem(idx, 'UNIDAD')}
-                            className={`rounded-[6px] px-2.5 py-1 font-geist-mono text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                            className={`rounded-[6px] px-2.5 py-1 text-[11.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
                               item.tipo_presentacion === 'UNIDAD'
-                                ? 'bg-electric-blue text-canvas-white shadow-2xs'
+                                ? 'bg-[#0d9488] text-white shadow-2xs'
                                 : 'text-slate hover:text-midnight-ink'
                             }`}
                           >
-                            UNIDAD
+                            Unidad
                           </button>
                         </div>
 
-                        {/* Control de Cantidad */}
+                        {/* Cantidad */}
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() =>
                               cambiarCantidadItem(idx, item.cantidad_presentacion - 1)
                             }
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-ash bg-canvas-white text-midnight-ink transition hover:bg-paper-mist"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[#cbd5e1] bg-canvas-white text-midnight-ink transition hover:bg-paper-mist"
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </button>
@@ -713,26 +642,26 @@ export function POSPage({ onBarcodeEvent }) {
                             min={1}
                             value={item.cantidad_presentacion}
                             onChange={(e) => cambiarCantidadItem(idx, e.target.value)}
-                            className="h-8 w-16 [appearance:textfield] rounded-[6px] border-2 border-midnight-ink bg-canvas-white px-2 text-center font-geist-mono text-[14px] font-bold text-midnight-ink focus:border-electric-blue focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            className="h-8 w-16 [appearance:textfield] rounded-[6px] border-2 border-[#0d9488] bg-canvas-white px-2 text-center font-geist-mono text-[14px] font-bold text-midnight-ink focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           />
                           <button
                             type="button"
                             onClick={() =>
                               cambiarCantidadItem(idx, item.cantidad_presentacion + 1)
                             }
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-ash bg-canvas-white text-midnight-ink transition hover:bg-paper-mist"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] border border-[#cbd5e1] bg-canvas-white text-midnight-ink transition hover:bg-paper-mist"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
                         </div>
 
-                        {/* Subtotal y equivalencia en unidad mínima */}
-                        <div className="whitespace-nowrap text-right font-geist-mono">
-                          <div className="text-[15px] font-bold text-midnight-ink">
+                        {/* Subtotal */}
+                        <div className="whitespace-nowrap text-right">
+                          <div className="font-geist-mono text-[15px] font-bold text-midnight-ink">
                             S/ {item.subtotal.toFixed(2)}
                           </div>
-                          <div className="text-[11px] font-medium text-electric-blue">
-                            -{item.unidadesMinimas} u.mín
+                          <div className="text-[11px] font-medium text-[#0f766e]">
+                            {item.unidadesMinimas} unds
                           </div>
                         </div>
                       </div>
@@ -742,12 +671,12 @@ export function POSPage({ onBarcodeEvent }) {
               )}
             </div>
 
-            {/* Selector de Método de Pago */}
-            <div className="border-t border-ash pt-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate">
-                Método de Pago (F7)
+            {/* Medio de Pago */}
+            <div className="border-t border-[#e5e0d8] pt-3">
+              <span className="text-[11.5px] font-bold uppercase tracking-wider text-slate">
+                Selecciona cómo paga el cliente
               </span>
-              <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 {METODOS_PAGO.map((mp) => {
                   const Icon = mp.icon
                   const activo = metodoPago === mp.id
@@ -756,15 +685,15 @@ export function POSPage({ onBarcodeEvent }) {
                       key={mp.id}
                       type="button"
                       onClick={() => setMetodoPago(mp.id)}
-                      className={`flex flex-col items-center justify-center gap-1 rounded-[8px] border-2 p-2.5 text-[12px] font-semibold transition ${
+                      className={`flex flex-col items-center justify-center gap-1 rounded-[10px] border-2 p-2.5 text-[12.5px] font-semibold transition ${
                         activo
-                          ? 'border-electric-blue bg-[#eff6ff] text-deep-sapphire shadow-2xs'
-                          : 'border-ash bg-canvas-white text-slate hover:bg-paper-mist'
+                          ? 'border-[#0d9488] bg-[#f0fdfa] text-[#0f766e] shadow-2xs'
+                          : 'border-[#e5e0d8] bg-canvas-white text-slate hover:bg-[#faf8f5]'
                       }`}
                     >
                       <Icon
                         className={`h-4 w-4 ${
-                          activo ? 'text-electric-blue' : 'text-slate'
+                          activo ? 'text-[#0d9488]' : 'text-slate'
                         }`}
                       />
                       <span className="whitespace-nowrap">{mp.label}</span>
@@ -774,12 +703,12 @@ export function POSPage({ onBarcodeEvent }) {
               </div>
             </div>
 
-            {/* Cálculo de Efectivo y Vuelto */}
+            {/* Calculadora de Vuelto para Efectivo */}
             {metodoPago === 'EFECTIVO' && resumenCarrito.total > 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-3 rounded-[8px] border border-[#86efac] bg-[#f0fdf4] p-3">
+              <div className="mt-3 grid grid-cols-2 gap-3 rounded-[10px] border border-[#86efac] bg-[#f0fdf4] p-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#15803d]">
-                    Efectivo Recibido (S/)
+                  <label className="block text-[11.5px] font-semibold text-[#15803d]">
+                    ¿Con cuánto paga? (S/)
                   </label>
                   <input
                     type="number"
@@ -790,20 +719,20 @@ export function POSPage({ onBarcodeEvent }) {
                     className="mt-1 w-full rounded-[6px] border-2 border-[#16a34a] bg-canvas-white px-2.5 py-1 font-geist-mono text-[14px] font-bold text-midnight-ink focus:outline-none"
                   />
                 </div>
-                <div className="flex flex-col justify-between text-right font-geist-mono">
-                  <span className="text-[11px] font-semibold text-[#15803d]">
-                    Vuelto al cliente
+                <div className="flex flex-col justify-between text-right">
+                  <span className="text-[11.5px] font-semibold text-[#15803d]">
+                    Vuelto a entregar
                   </span>
-                  <span className="whitespace-nowrap text-[18px] font-bold text-[#15803d]">
+                  <span className="whitespace-nowrap font-geist-mono text-[18px] font-bold text-[#15803d]">
                     S/ {vuelto.toFixed(2)}
                   </span>
                 </div>
               </div>
             )}
 
-            {/* Total y Botón Primario */}
-            <div className="mt-4 border-t border-ash pt-3">
-              <div className="flex items-baseline justify-between rounded-[10px] bg-paper-mist px-3.5 py-2.5">
+            {/* Total y Botón Principal de Venta */}
+            <div className="mt-4 border-t border-[#e5e0d8] pt-3">
+              <div className="flex items-baseline justify-between rounded-[10px] bg-[#faf8f5] px-4 py-2.5">
                 <span className="text-[14px] font-bold uppercase tracking-wide text-slate">
                   Total a Cobrar
                 </span>
@@ -815,35 +744,35 @@ export function POSPage({ onBarcodeEvent }) {
               <button
                 type="button"
                 disabled={carrito.length === 0 || procesandoVenta}
-                onClick={confirmarVentaFEFO}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-[8px] bg-electric-blue px-4 py-3 text-[15px] font-semibold text-canvas-white shadow-sm transition hover:bg-deep-sapphire disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={confirmarVenta}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#0d9488] px-4 py-3 text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#0f766e] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Receipt className="h-5 w-5" />
                 <span>
                   {procesandoVenta
-                    ? 'Procesando Descuento FEFO...'
-                    : 'Registrar Venta e Imprimir Ticket (F10)'}
+                    ? 'Registrando venta...'
+                    : 'Confirmar Venta e Imprimir Comprobante'}
                 </span>
               </button>
             </div>
           </div>
 
-          {/* Historial Rápido de Últimas Ventas en Mostrador */}
-          <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
-            <div className="flex items-center justify-between border-b border-ash pb-2.5">
+          {/* Últimas Ventas Realizadas */}
+          <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white p-4 shadow-2xs">
+            <div className="flex items-center justify-between border-b border-[#e5e0d8] pb-2.5">
               <span className="flex items-center gap-1.5 text-[13px] font-bold text-midnight-ink">
-                <Clock className="h-4 w-4 text-electric-blue" />
-                Últimas Ventas Despachadas
+                <Clock className="h-4 w-4 text-[#0d9488]" />
+                Ventas Recientes en Mostrador
               </span>
-              <span className="font-geist-mono text-[11px] font-medium text-slate">
-                Reimpresión Térmica
+              <span className="text-[11px] font-medium text-slate">
+                Reimprimir boleta
               </span>
             </div>
 
-            <div className="mt-2 divide-y divide-ash text-[12px]">
+            <div className="mt-2 divide-y divide-[#e5e0d8] text-[12px]">
               {ventasRecientes.length === 0 ? (
-                <p className="py-4 text-center text-fog">
-                  Sin ventas registradas recientemente.
+                <p className="py-4 text-center text-steel">
+                  Aún no hay ventas registradas hoy.
                 </p>
               ) : (
                 ventasRecientes.slice(0, 5).map((v) => (
@@ -855,7 +784,7 @@ export function POSPage({ onBarcodeEvent }) {
                       <span className="font-geist-mono font-bold text-midnight-ink">
                         #{String(v.id).padStart(5, '0')}
                       </span>
-                      <span className="font-geist-mono text-slate">
+                      <span className="text-slate">
                         {new Date(v.fecha_hora).toLocaleTimeString('es-PE', {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -869,10 +798,9 @@ export function POSPage({ onBarcodeEvent }) {
                               ? 'lavender'
                               : 'blue'
                         }
-                        mono
                         withDot={false}
                       >
-                        {v.metodo_pago}
+                        {PAGO_AMIGABLE[v.metodo_pago] || v.metodo_pago}
                       </StatusBadge>
                     </div>
                     <div className="flex items-center gap-2.5">
@@ -882,11 +810,10 @@ export function POSPage({ onBarcodeEvent }) {
                       <button
                         type="button"
                         onClick={() => setVentaEmitida(v)}
-                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] border border-[#93c5fd] bg-[#eff6ff] px-2.5 py-1 text-[11px] font-semibold text-electric-blue hover:bg-electric-blue hover:text-canvas-white"
-                        title="Ver / Imprimir Ticket Térmico"
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] border border-[#99f6e4] bg-[#f0fdfa] px-2.5 py-1 text-[11px] font-semibold text-[#0f766e] hover:bg-[#0d9488] hover:text-white"
                       >
                         <Printer className="h-3 w-3" />
-                        Ticket
+                        Boleta
                       </button>
                     </div>
                   </div>
@@ -897,7 +824,7 @@ export function POSPage({ onBarcodeEvent }) {
         </div>
       </div>
 
-      {/* Modal e Impresión Web de Ticket Térmico 80mm */}
+      {/* Modal de Comprobante Térmico */}
       {ventaEmitida && (
         <ThermalTicket
           venta={ventaEmitida}

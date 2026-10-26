@@ -36,7 +36,6 @@ export function InventarioPage() {
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
 
-  // Estado del Modal Crear / Editar
   const [modalOpen, setModalOpen] = useState(false)
   const [editandoProducto, setEditandoProducto] = useState(null)
   const [form, setForm] = useState(FORM_INICIAL)
@@ -136,10 +135,10 @@ export function InventarioPage() {
       if (editandoProducto) {
         const { codigo_barras: _omit, ...updatePayload } = payload
         await productosApi.actualizar(editandoProducto.id, updatePayload)
-        setSuccessMsg(`Medicamento "${payload.nombre}" actualizado correctamente.`)
+        setSuccessMsg(`Los datos de "${payload.nombre}" se actualizaron correctamente.`)
       } else {
         await productosApi.crear(payload)
-        setSuccessMsg(`Medicamento "${payload.nombre}" registrado en el catálogo.`)
+        setSuccessMsg(`El medicamento "${payload.nombre}" fue agregado al catálogo.`)
       }
 
       setModalOpen(false)
@@ -153,14 +152,14 @@ export function InventarioPage() {
 
   return (
     <div className="space-y-6">
-      {/* Encabezado */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-ash bg-canvas-white px-5 py-4 shadow-xs">
+      {/* Encabezado Amigable */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[14px] border border-[#e5e0d8] bg-canvas-white px-6 py-4 shadow-2xs">
         <div>
-          <h1 className="font-satoshi text-[30px] font-bold leading-[1.15] text-midnight-ink">
-            Catálogo Farmacéutico y Fraccionamiento
+          <h1 className="font-satoshi text-[28px] font-bold leading-tight text-midnight-ink">
+            Catálogo de Medicamentos y Precios
           </h1>
           <p className="mt-1 text-[14px] text-slate">
-            Gestión de presentaciones comerciales (Caja, Blíster, Unidad suelta) y factores de conversión para el Kardex.
+            Administra los medicamentos de la botica, sus precios de venta por caja, blíster o unidad y su stock disponible.
           </p>
         </div>
 
@@ -168,18 +167,18 @@ export function InventarioPage() {
           <button
             type="button"
             onClick={() => cargarCatalogo(buscar)}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[8px] border border-ash bg-canvas-white px-3.5 py-2 text-[14px] font-semibold text-midnight-ink hover:bg-paper-mist"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[10px] border border-[#e5e0d8] bg-canvas-white px-3.5 py-2 text-[14px] font-semibold text-midnight-ink hover:bg-[#faf8f5]"
           >
-            <RefreshCw className="h-4 w-4 text-electric-blue" />
+            <RefreshCw className="h-4 w-4 text-[#0d9488]" />
             Actualizar
           </button>
           <button
             type="button"
             onClick={abrirModalNuevo}
-            className="inline-flex items-center gap-2 whitespace-nowrap rounded-[8px] bg-electric-blue px-4 py-2 text-[14px] font-semibold text-canvas-white shadow-xs hover:bg-deep-sapphire"
+            className="inline-flex items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#0d9488] px-4 py-2 text-[14px] font-semibold text-white shadow-2xs hover:bg-[#0f766e]"
           >
             <Plus className="h-4 w-4" />
-            Nuevo Medicamento
+            Agregar Medicamento
           </button>
         </div>
       </div>
@@ -193,7 +192,7 @@ export function InventarioPage() {
           <button
             type="button"
             onClick={() => setError(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
             Cerrar
           </button>
@@ -209,18 +208,18 @@ export function InventarioPage() {
           <button
             type="button"
             onClick={() => setSuccessMsg(null)}
-            className="font-geist-mono text-[12px] font-semibold underline"
+            className="text-[12px] font-semibold underline"
           >
             OK
           </button>
         </div>
       )}
 
-      {/* Barra de Búsqueda */}
-      <div className="rounded-[12px] border border-ash bg-canvas-white p-4 shadow-xs">
+      {/* Buscador y Tabla */}
+      <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white p-5 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative min-w-[260px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-electric-blue" />
+            <Search className="pointer-events-none absolute left-3.5 top-2.5 h-4 w-4 text-[#0d9488]" />
             <input
               type="text"
               value={buscar}
@@ -228,44 +227,43 @@ export function InventarioPage() {
                 setBuscar(e.target.value)
                 cargarCatalogo(e.target.value)
               }}
-              placeholder="Filtrar por código de barras EAN, nombre comercial o principio activo..."
-              className="w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white py-2 pl-9 pr-3 text-[14px] font-medium text-midnight-ink placeholder:text-fog focus:border-electric-blue focus:outline-none"
+              placeholder="Buscar por nombre del medicamento, principio activo o código de barras..."
+              className="w-full rounded-[10px] border-2 border-[#cbd5e1] bg-[#faf8f5] py-2 pl-10 pr-3 text-[14px] font-medium text-midnight-ink placeholder:text-steel focus:border-[#0d9488] focus:bg-white focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-2 rounded-full border border-[#93c5fd] bg-[#eff6ff] px-3 py-1 font-geist-mono text-[12px] font-semibold text-deep-sapphire">
-            <PackageCheck className="h-4 w-4 text-electric-blue" />
-            <span>{productos.length} SKUs registrados</span>
+          <div className="flex items-center gap-2 rounded-full border border-[#99f6e4] bg-[#f0fdfa] px-3.5 py-1 text-[12.5px] font-semibold text-[#0f766e]">
+            <PackageCheck className="h-4 w-4 text-[#0d9488]" />
+            <span>{productos.length} medicamentos registrados</span>
           </div>
         </div>
 
-        {/* Tabla de Productos */}
-        <div className="mt-4 overflow-x-auto rounded-[8px] border border-ash">
+        <div className="mt-4 overflow-x-auto rounded-[10px] border border-[#e5e0d8]">
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="border-b border-ash bg-paper-mist text-[11px] font-bold uppercase tracking-wider text-slate">
-                <th className="whitespace-nowrap px-3 py-2.5">Código EAN</th>
-                <th className="px-3 py-2.5">Medicamento / Laboratorio</th>
-                <th className="whitespace-nowrap px-3 py-2.5">Fraccionamiento</th>
-                <th className="whitespace-nowrap px-3 py-2.5 text-right">Caja</th>
-                <th className="whitespace-nowrap px-3 py-2.5 text-right">Blíster</th>
-                <th className="whitespace-nowrap px-3 py-2.5 text-right">Unidad</th>
-                <th className="whitespace-nowrap px-3 py-2.5 text-right">Stock FEFO</th>
-                <th className="whitespace-nowrap px-3 py-2.5">Lote Activo</th>
-                <th className="whitespace-nowrap px-3 py-2.5 text-right">Editar</th>
+              <tr className="border-b border-[#e5e0d8] bg-[#faf8f5] text-[11px] font-bold uppercase tracking-wider text-slate">
+                <th className="whitespace-nowrap px-3.5 py-2.5">Código</th>
+                <th className="px-3.5 py-2.5">Medicamento / Laboratorio</th>
+                <th className="whitespace-nowrap px-3.5 py-2.5">Forma de Venta</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-right">Precio Caja</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-right">Precio Blíster</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-right">Precio Unidad</th>
+                <th className="whitespace-nowrap px-3 py-2.5 text-right">Stock Disponible</th>
+                <th className="whitespace-nowrap px-3.5 py-2.5">Próximo en Salir</th>
+                <th className="whitespace-nowrap px-3.5 py-2.5 text-right">Acción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ash text-[13px]">
+            <tbody className="divide-y divide-[#e5e0d8] text-[13px]">
               {loading ? (
                 <tr>
                   <td colSpan={9} className="py-10 text-center font-medium text-slate">
-                    Cargando catálogo de medicamentos...
+                    Cargando medicamentos...
                   </td>
                 </tr>
               ) : productos.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-10 text-center text-slate">
-                    No se encontraron medicamentos con ese criterio.
+                    No se encontraron medicamentos con ese nombre.
                   </td>
                 </tr>
               ) : (
@@ -275,41 +273,41 @@ export function InventarioPage() {
                   const bajoMinimo = stockActual < prod.stock_minimo
 
                   return (
-                    <tr key={prod.id} className="transition hover:bg-[#eff6ff]/60">
-                      <td className="whitespace-nowrap px-3 py-3 font-geist-mono text-[12px] font-semibold text-midnight-ink">
-                        <span className="inline-flex items-center gap-1 rounded-[6px] border border-ash bg-paper-mist px-2 py-0.5">
-                          <ScanBarcode className="h-3 w-3 text-electric-blue" />
+                    <tr key={prod.id} className="transition hover:bg-[#f0fdfa]/60">
+                      <td className="whitespace-nowrap px-3.5 py-3 font-geist-mono text-[12px] font-semibold text-midnight-ink">
+                        <span className="inline-flex items-center gap-1 rounded-[6px] border border-[#e5e0d8] bg-[#faf8f5] px-2 py-0.5">
+                          <ScanBarcode className="h-3 w-3 text-[#0d9488]" />
                           {prod.codigo_barras}
                         </span>
                       </td>
 
-                      <td className="px-3 py-3">
+                      <td className="px-3.5 py-3">
                         <div className="font-bold text-midnight-ink">{prod.nombre}</div>
                         <div className="text-[12px] text-slate">
-                          {prod.principio_activo || 'Sin principio activo'} ·{' '}
+                          {prod.principio_activo || 'Genérico'} ·{' '}
                           {prod.concentracion || ''} ·{' '}
-                          <span className="font-semibold text-deep-sapphire">
-                            {prod.laboratorio || 'S/L'}
+                          <span className="font-semibold text-[#0f766e]">
+                            {prod.laboratorio || 'Laboratorio'}
                           </span>
                         </div>
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3">
+                      <td className="whitespace-nowrap px-3.5 py-3">
                         {prod.fraccionable ? (
-                          <div className="space-y-0.5 font-geist-mono text-[11px]">
-                            <StatusBadge variant="blue" mono withDot={false}>
-                              Fraccionable
+                          <div className="space-y-0.5 text-[11.5px]">
+                            <StatusBadge variant="blue" withDot={false}>
+                              Se vende suelto / blíster
                             </StatusBadge>
                             <div className="font-medium text-slate">
-                              Caja={prod.unidades_por_caja}u
+                              Caja de {prod.unidades_por_caja} unds
                               {prod.unidades_por_blister
-                                ? ` · Blís=${prod.unidades_por_blister}u`
+                                ? ` · Blíster de ${prod.unidades_por_blister}`
                                 : ''}
                             </div>
                           </div>
                         ) : (
-                          <StatusBadge variant="neutral" mono withDot={false}>
-                            Indivisible (1u)
+                          <StatusBadge variant="neutral" withDot={false}>
+                            Solo caja / frasco entero
                           </StatusBadge>
                         )}
                       </td>
@@ -318,55 +316,57 @@ export function InventarioPage() {
                         S/ {Number(prod.precio_venta_caja).toFixed(2)}
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-deep-sapphire">
+                      <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#0f766e]">
                         {prod.precio_venta_blister
                           ? `S/ ${Number(prod.precio_venta_blister).toFixed(2)}`
                           : '—'}
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-vivid-green">
+                      <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#15803d]">
                         {prod.precio_venta_unitario
                           ? `S/ ${Number(prod.precio_venta_unitario).toFixed(2)}`
                           : '—'}
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono">
-                        <div className="text-[14px] font-bold text-midnight-ink">
+                      <td className="whitespace-nowrap px-3 py-3 text-right">
+                        <div className="font-geist-mono text-[14px] font-bold text-midnight-ink">
                           {stockActual}{' '}
-                          <span className="text-[11px] font-normal text-slate">u.mín</span>
+                          <span className="font-inter text-[11px] font-normal text-slate">
+                            unds
+                          </span>
                         </div>
-                        <div className="text-[11px] text-fog">
-                          Mín: {prod.stock_minimo}u
+                        <div className="text-[11px] text-steel">
+                          Mínimo ideal: {prod.stock_minimo}
                         </div>
                         {bajoMinimo && (
-                          <StatusBadge variant="tangerine" mono>
-                            Bajo Mínimo
+                          <StatusBadge variant="tangerine">
+                            Pocas unidades
                           </StatusBadge>
                         )}
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3 font-geist-mono text-[12px]">
+                      <td className="whitespace-nowrap px-3.5 py-3 text-[12px]">
                         {infoFefo?.lote_fefo_numero ? (
                           <div>
                             <StatusBadge variant="mint" mono>
-                              {infoFefo.lote_fefo_numero}
+                              Lote {infoFefo.lote_fefo_numero}
                             </StatusBadge>
                             <div className="mt-0.5 text-[11px] font-medium text-slate">
                               Vence: {infoFefo.proximo_vencimiento}
                             </div>
                           </div>
                         ) : (
-                          <StatusBadge variant="danger" mono>
-                            Sin Lote Vigente
+                          <StatusBadge variant="danger">
+                            Sin stock vigente
                           </StatusBadge>
                         )}
                       </td>
 
-                      <td className="whitespace-nowrap px-3 py-3 text-right">
+                      <td className="whitespace-nowrap px-3.5 py-3 text-right">
                         <button
                           type="button"
                           onClick={() => abrirModalEditar(prod)}
-                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#93c5fd] bg-[#eff6ff] px-2.5 py-1.5 text-[12px] font-semibold text-electric-blue hover:bg-electric-blue hover:text-canvas-white"
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#99f6e4] bg-[#f0fdfa] px-2.5 py-1.5 text-[12px] font-semibold text-[#0f766e] hover:bg-[#0d9488] hover:text-white"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                           Editar
@@ -385,15 +385,15 @@ export function InventarioPage() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editandoProducto ? 'Editar Medicamento' : 'Registrar Nuevo Medicamento'}
-        subtitle="Define las unidades mínimas de control y los precios por presentación comercial."
+        title={editandoProducto ? 'Editar Datos del Medicamento' : 'Agregar Nuevo Medicamento'}
+        subtitle="Completa la información del producto y sus precios de venta al público."
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSubmitForm} className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Código de Barras (EAN-13 / Interno) *
+                Código de Barras *
               </label>
               <input
                 type="text"
@@ -404,13 +404,13 @@ export function InventarioPage() {
                   setForm({ ...form, codigo_barras: e.target.value })
                 }
                 placeholder="7750100000099"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist disabled:text-fog"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist disabled:text-fog"
               />
             </div>
 
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Laboratorio Farmacéutico
+                Laboratorio
               </label>
               <input
                 type="text"
@@ -419,13 +419,13 @@ export function InventarioPage() {
                   setForm({ ...form, laboratorio: e.target.value })
                 }
                 placeholder="Ej. Portugal, Genfar, GSK"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
               />
             </div>
 
             <div className="sm:col-span-2">
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Nombre Comercial Completo *
+                Nombre del Medicamento *
               </label>
               <input
                 type="text"
@@ -433,13 +433,13 @@ export function InventarioPage() {
                 value={form.nombre}
                 onChange={(e) => setForm({ ...form, nombre: e.target.value })}
                 placeholder="Ej. Paracetamol 500mg Caja x 100 Tabletas"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
               />
             </div>
 
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Principio Activo (DCI)
+                Principio Activo (Componente)
               </label>
               <input
                 type="text"
@@ -448,7 +448,7 @@ export function InventarioPage() {
                   setForm({ ...form, principio_activo: e.target.value })
                 }
                 placeholder="Ej. Paracetamol"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
               />
             </div>
 
@@ -463,20 +463,19 @@ export function InventarioPage() {
                   setForm({ ...form, concentracion: e.target.value })
                 }
                 placeholder="Ej. 500mg"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 text-[13px]"
               />
             </div>
           </div>
 
-          {/* Configuración de Fraccionamiento */}
-          <div className="rounded-[12px] border border-[#93c5fd] bg-[#eff6ff] p-3.5">
+          <div className="rounded-[12px] border border-[#99f6e4] bg-[#f0fdfa] p-3.5">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-[13px] font-bold text-midnight-ink">
-                  ¿Medicamento Fraccionable en Mostrador?
+                  ¿Se puede vender por pastilla suelta o blíster?
                 </span>
-                <p className="text-[11px] text-slate">
-                  Permite vender por Blíster o Unidad suelta descontando la unidad mínima del lote FEFO.
+                <p className="text-[11.5px] text-slate">
+                  Actívalo si la caja se puede abrir para vender unidades o blísters en mostrador.
                 </p>
               </div>
               <input
@@ -485,14 +484,14 @@ export function InventarioPage() {
                 onChange={(e) =>
                   setForm({ ...form, fraccionable: e.target.checked })
                 }
-                className="h-4 w-4 accent-electric-blue"
+                className="h-4 w-4 accent-[#0d9488]"
               />
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label className="block text-[11px] font-semibold text-midnight-ink">
-                  Unidades por Caja *
+                  Unidades que trae la Caja *
                 </label>
                 <input
                   type="number"
@@ -503,7 +502,7 @@ export function InventarioPage() {
                   onChange={(e) =>
                     setForm({ ...form, unidades_por_caja: e.target.value })
                   }
-                  className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px] disabled:bg-ash/40"
+                  className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px] disabled:bg-ash/40"
                 />
               </div>
 
@@ -520,13 +519,13 @@ export function InventarioPage() {
                     setForm({ ...form, unidades_por_blister: e.target.value })
                   }
                   placeholder="10"
-                  className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px] disabled:bg-ash/40"
+                  className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px] disabled:bg-ash/40"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-semibold text-midnight-ink">
-                  Stock Mínimo (u. mín) *
+                  Alerta de Stock Mínimo *
                 </label>
                 <input
                   type="number"
@@ -536,17 +535,16 @@ export function InventarioPage() {
                   onChange={(e) =>
                     setForm({ ...form, stock_minimo: e.target.value })
                   }
-                  className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px]"
+                  className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-2.5 py-1.5 font-geist-mono text-[13px]"
                 />
               </div>
             </div>
           </div>
 
-          {/* Precios por Presentación */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Precio Venta Caja (S/) *
+                Precio por Caja (S/) *
               </label>
               <input
                 type="number"
@@ -558,13 +556,13 @@ export function InventarioPage() {
                   setForm({ ...form, precio_venta_caja: e.target.value })
                 }
                 placeholder="25.00"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px]"
               />
             </div>
 
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Precio Venta Blíster (S/)
+                Precio por Blíster (S/)
               </label>
               <input
                 type="number"
@@ -576,13 +574,13 @@ export function InventarioPage() {
                   setForm({ ...form, precio_venta_blister: e.target.value })
                 }
                 placeholder="3.00"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist"
               />
             </div>
 
             <div>
               <label className="block text-[12px] font-semibold text-midnight-ink">
-                Precio Venta Unidad (S/)
+                Precio por Unidad (S/)
               </label>
               <input
                 type="number"
@@ -594,23 +592,23 @@ export function InventarioPage() {
                   setForm({ ...form, precio_venta_unitario: e.target.value })
                 }
                 placeholder="0.35"
-                className="mt-1 w-full rounded-[6px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist"
+                className="mt-1 w-full rounded-[8px] border-2 border-slate-300 bg-canvas-white px-3 py-1.5 font-geist-mono text-[13px] disabled:bg-paper-mist"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-ash pt-4">
+          <div className="flex items-center justify-end gap-2 border-t border-[#e5e0d8] pt-4">
             <button
               type="button"
               onClick={() => setModalOpen(false)}
-              className="rounded-[8px] border border-ash bg-canvas-white px-4 py-2 text-[14px] font-semibold text-midnight-ink hover:bg-paper-mist"
+              className="rounded-[8px] border border-[#e5e0d8] bg-canvas-white px-4 py-2 text-[14px] font-semibold text-midnight-ink hover:bg-[#faf8f5]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={guardando}
-              className="rounded-[8px] bg-electric-blue px-4 py-2 text-[14px] font-semibold text-canvas-white hover:bg-deep-sapphire disabled:opacity-50"
+              className="rounded-[8px] bg-[#0d9488] px-4 py-2 text-[14px] font-semibold text-white hover:bg-[#0f766e] disabled:opacity-50"
             >
               {guardando ? 'Guardando...' : 'Guardar Medicamento'}
             </button>
