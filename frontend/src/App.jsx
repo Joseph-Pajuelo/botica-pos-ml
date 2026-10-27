@@ -1,4 +1,12 @@
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from 'react-router-dom'
 import { Navbar } from './components'
 import {
   POSPage,
@@ -6,27 +14,52 @@ import {
   InventarioPage,
   LotesKardexPage,
   MLDashboardPage,
+  LoginPage,
 } from './pages'
 import { useKeyboardShortcuts } from './hooks'
+import { authApi } from './services/api'
 
 function AppShell() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [usuario, setUsuario] = useState(() => authApi.getStoredUser())
+  const isAuthenticated = Boolean(usuario && authApi.getStoredToken())
+  const isLoginRoute = location.pathname === '/login'
 
-  // Atajos de teclado discretos en segundo plano (sin ensuciar la interfaz visual)
+  const handleLogout = () => {
+    authApi.logout()
+    setUsuario(null)
+  }
+
+  // Atajos de teclado discretos en segundo plano (activos solo dentro de sesión)
   useKeyboardShortcuts({
-    F1: () => navigate('/'),
-    F2: () => navigate('/ventas'),
-    F3: () => navigate('/inventario'),
-    F4: () => navigate('/lotes-kardex'),
-    F5: () => navigate('/ml-dashboard'),
+    F1: () => isAuthenticated && navigate('/'),
+    F2: () => isAuthenticated && navigate('/ventas'),
+    F3: () => isAuthenticated && navigate('/inventario'),
+    F4: () => isAuthenticated && navigate('/lotes-kardex'),
+    F5: () => isAuthenticated && navigate('/ml-dashboard'),
   })
+
+  if (!isAuthenticated && !isLoginRoute) {
+    return <Navigate to="/login" replace />
+  }
 
   return (
     <div className="min-h-screen bg-dub-dots text-charcoal">
-      <Navbar />
+      {!isLoginRoute && <Navbar usuario={usuario} onLogout={handleLogout} />}
 
       <main className="mx-auto max-w-[1260px] px-6 py-7">
         <Routes>
+          <Route
+            path="/login"
+            element={
+              isAuthenticated ? (
+                <Navigate to="/" replace />
+              ) : (
+                <LoginPage onLoginSuccess={(user) => setUsuario(user)} />
+              )
+            }
+          />
           <Route path="/" element={<POSPage />} />
           <Route path="/ventas" element={<VentasPage />} />
           <Route path="/inventario" element={<InventarioPage />} />

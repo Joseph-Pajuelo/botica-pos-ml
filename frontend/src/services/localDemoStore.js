@@ -1,10 +1,37 @@
 /**
- * Motor local de respaldo (Fallback FEFO + Kardex + ML en memoria/localStorage).
+ * Motor local de respaldo (Fallback FEFO + Kardex + ML + Auth + Export en memoria/localStorage).
  * Se activa automáticamente SOLO cuando el backend FastAPI (localhost:8000) no está encendido localmente,
  * permitiendo probar el 100% de la interfaz Frontend sin errores de red.
  */
 
-const STORAGE_KEY = 'botica_pos_ml_demo_store_v1'
+const STORAGE_KEY = 'botica_pos_ml_demo_store_v2'
+
+const DEMO_USERS = [
+  {
+    id: 1,
+    username: 'admin',
+    password: 'admin123',
+    nombre_completo: 'Administrador General Botica',
+    rol: 'ADMIN',
+    activo: true,
+  },
+  {
+    id: 2,
+    username: 'farmaceutico',
+    password: 'farma123',
+    nombre_completo: 'Q.F. Director Técnico',
+    rol: 'FARMACEUTICO',
+    activo: true,
+  },
+  {
+    id: 3,
+    username: 'cajero',
+    password: 'caja123',
+    nombre_completo: 'Cajero de Mostrador Principal',
+    rol: 'CAJERO',
+    activo: true,
+  },
+]
 
 function addDays(days) {
   const d = new Date()
@@ -176,6 +203,66 @@ function createInitialState() {
       _demanda_diaria: 2,
       _costo_unitario: 8.2,
     },
+    {
+      id: 9,
+      codigo_barras: '7750100000097',
+      nombre: 'Panadol 500mg Marca Original Caja x 100 tab',
+      principio_activo: 'Paracetamol',
+      concentracion: '500mg',
+      laboratorio: 'GSK',
+      precio_venta_caja: 42.0,
+      precio_venta_blister: 4.5,
+      precio_venta_unitario: 0.5,
+      fraccionable: true,
+      unidades_por_caja: 100,
+      unidades_por_blister: 10,
+      stock_minimo: 50,
+      activo: true,
+      creado_en: nowIso,
+      actualizado_en: nowIso,
+      _demanda_diaria: 12,
+      _costo_unitario: 0.25,
+    },
+    {
+      id: 10,
+      codigo_barras: '7750100000103',
+      nombre: 'Paracetamol 500mg Genfar Caja x 100 tab',
+      principio_activo: 'Paracetamol',
+      concentracion: '500mg',
+      laboratorio: 'Genfar',
+      precio_venta_caja: 21.0,
+      precio_venta_blister: 2.3,
+      precio_venta_unitario: 0.3,
+      fraccionable: true,
+      unidades_por_caja: 100,
+      unidades_por_blister: 10,
+      stock_minimo: 80,
+      activo: true,
+      creado_en: nowIso,
+      actualizado_en: nowIso,
+      _demanda_diaria: 15,
+      _costo_unitario: 0.11,
+    },
+    {
+      id: 11,
+      codigo_barras: '7750100000110',
+      nombre: 'Doloral 400mg Marca Caja x 100 tab',
+      principio_activo: 'Ibuprofeno',
+      concentracion: '400mg',
+      laboratorio: 'Hersil',
+      precio_venta_caja: 38.0,
+      precio_venta_blister: 4.0,
+      precio_venta_unitario: 0.45,
+      fraccionable: true,
+      unidades_por_caja: 100,
+      unidades_por_blister: 10,
+      stock_minimo: 40,
+      activo: true,
+      creado_en: nowIso,
+      actualizado_en: nowIso,
+      _demanda_diaria: 9,
+      _costo_unitario: 0.22,
+    },
   ]
 
   const lotes = [
@@ -299,6 +386,18 @@ function createInitialState() {
       creado_en: nowIso,
       actualizado_en: nowIso,
     },
+    {
+      id: 11,
+      producto_id: 10,
+      numero_lote: 'LOT-2026-10A',
+      fecha_vencimiento: addDays(240),
+      stock_inicial: 300,
+      stock_actual: 220,
+      costo_compra_unitario: 0.11,
+      activo: true,
+      creado_en: nowIso,
+      actualizado_en: nowIso,
+    },
   ]
 
   const kardex = lotes.map((l, idx) => ({
@@ -371,7 +470,50 @@ function getLotesFefoVigentes(state, productoId) {
     .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
 }
 
+function enriquecerProducto(state, prod) {
+  const lotesFefo = getLotesFefoVigentes(state, prod.id)
+  const stockTotal = lotesFefo.reduce((acc, l) => acc + l.stock_actual, 0)
+  const primero = lotesFefo[0] || null
+  return {
+    ...prod,
+    stock_total_vigente: stockTotal,
+    proximo_vencimiento: primero ? primero.fecha_vencimiento : null,
+    lote_fefo_numero: primero ? primero.numero_lote : null,
+  }
+}
+
 export const localDemoStore = {
+  autenticar: ({ username, password }) => {
+    const cleanUser = String(username || '').trim().toLowerCase()
+    const cleanPass = String(password || '')
+    const found = DEMO_USERS.find(
+      (u) => u.username === cleanUser && u.password === cleanPass
+    )
+    if (!found) {
+      const err = new Error('Credenciales inválidas')
+      err.response = {
+        status: 401,
+        data: { detail: 'Usuario o contraseña incorrectos. Verifica tus credenciales.' },
+      }
+      throw err
+    }
+    const nowIso = new Date().toISOString()
+    return {
+      access_token: `demo-jwt-token-${found.username}-${Date.now()}`,
+      token_type: 'bearer',
+      expira_en_minutos: 480,
+      usuario: {
+        id: found.id,
+        username: found.username,
+        nombre_completo: found.nombre_completo,
+        rol: found.rol,
+        activo: found.activo,
+        creado_en: nowIso,
+        actualizado_en: nowIso,
+      },
+    }
+  },
+
   resetSeed: (mesesHistoria = 12) => {
     const fresh = createInitialState()
     saveStore(fresh)
@@ -387,13 +529,15 @@ export const localDemoStore = {
   listarProductos: ({ buscar = '' } = {}) => {
     const state = loadStore()
     const q = buscar.trim().toLowerCase()
-    if (!q) return state.productos
-    return state.productos.filter(
-      (p) =>
-        p.nombre.toLowerCase().includes(q) ||
-        (p.principio_activo || '').toLowerCase().includes(q) ||
-        p.codigo_barras.toLowerCase().includes(q)
-    )
+    const filtrados = !q
+      ? state.productos
+      : state.productos.filter(
+          (p) =>
+            p.nombre.toLowerCase().includes(q) ||
+            (p.principio_activo || '').toLowerCase().includes(q) ||
+            p.codigo_barras.toLowerCase().includes(q)
+        )
+    return filtrados.map((p) => enriquecerProducto(state, p))
   },
 
   escanearBarcode: (codigoBarras) => {
@@ -404,15 +548,28 @@ export const localDemoStore = {
       err.response = { data: { detail: `Producto con código '${codigoBarras}' no encontrado.` } }
       throw err
     }
-    const lotesFefo = getLotesFefoVigentes(state, prod.id)
-    const stockTotal = lotesFefo.reduce((acc, l) => acc + l.stock_actual, 0)
-    const primero = lotesFefo[0] || null
-    return {
-      ...prod,
-      stock_total_vigente: stockTotal,
-      proximo_vencimiento: primero ? primero.fecha_vencimiento : null,
-      lote_fefo_numero: primero ? primero.numero_lote : null,
-    }
+    return enriquecerProducto(state, prod)
+  },
+
+  buscarSustitutos: (productoId) => {
+    const state = loadStore()
+    const origen = state.productos.find((p) => Number(p.id) === Number(productoId))
+    if (!origen || !origen.principio_activo) return []
+
+    const terminoPa = origen.principio_activo.trim().toLowerCase()
+    const candidatos = state.productos.filter(
+      (p) =>
+        Number(p.id) !== Number(origen.id) &&
+        p.activo &&
+        (p.principio_activo || '').toLowerCase().includes(terminoPa)
+    )
+
+    const sustitutos = candidatos
+      .map((c) => enriquecerProducto(state, c))
+      .filter((info) => info.stock_total_vigente > 0)
+      .sort((a, b) => Number(a.precio_venta_caja) - Number(b.precio_venta_caja) || a.id - b.id)
+
+    return sustitutos
   },
 
   crearProducto: (payload) => {
@@ -429,11 +586,14 @@ export const localDemoStore = {
       creado_en: nowIso,
       actualizado_en: nowIso,
       _demanda_diaria: 8,
-      _costo_unitario: +(Number(payload.precio_venta_caja || 10) / (Number(payload.unidades_por_caja || 1) * 1.8)).toFixed(2),
+      _costo_unitario: +(
+        Number(payload.precio_venta_caja || 10) /
+        (Number(payload.unidades_por_caja || 1) * 1.8)
+      ).toFixed(2),
     }
     state.productos.unshift(nuevo)
     saveStore(state)
-    return nuevo
+    return enriquecerProducto(state, nuevo)
   },
 
   actualizarProducto: (productoId, payload) => {
@@ -446,7 +606,7 @@ export const localDemoStore = {
       actualizado_en: new Date().toISOString(),
     }
     saveStore(state)
-    return state.productos[idx]
+    return enriquecerProducto(state, state.productos[idx])
   },
 
   registrarVenta: (payload) => {
@@ -486,7 +646,7 @@ export const localDemoStore = {
         const err = new Error('Stock insuficiente')
         err.response = {
           data: {
-            detail: `Stock FEFO insuficiente para '${prod.nombre}': solicitado ${unidadesMinimas} u.mín, disponible ${disponible} u.mín.`,
+            detail: `Stock insuficiente para '${prod.nombre}': solicitado ${unidadesMinimas} unidades, disponible ${disponible} unidades.`,
           },
         }
         throw err
@@ -608,7 +768,9 @@ export const localDemoStore = {
     if (lote.stock_actual < cant) {
       const err = new Error('Stock insuficiente en lote')
       err.response = {
-        data: { detail: `Stock insuficiente en lote ${lote.numero_lote} (disponible: ${lote.stock_actual}).` },
+        data: {
+          detail: `Stock insuficiente en lote ${lote.numero_lote} (disponible: ${lote.stock_actual}).`,
+        },
       }
       throw err
     }
@@ -718,5 +880,40 @@ export const localDemoStore = {
       inversion_total_sugerida: +inversionTotal.toFixed(2),
       sugerencias: filtradas,
     }
+  },
+
+  generarCsvOrdenCompraMl: (soloCriticos = false) => {
+    const reporte = localDemoStore.obtenerSugerenciasReorden(soloCriticos)
+    const encabezados = [
+      'CODIGO_BARRAS',
+      'MEDICAMENTO',
+      'LABORATORIO',
+      'ESTADO_ROTACION_ML',
+      'STOCK_ACTUAL_UNIDADES',
+      'STOCK_MINIMO',
+      'DEMANDA_PREDICHA_15_DIAS',
+      'DIAS_COBERTURA_ACTUAL',
+      'CAJAS_SUGERIDAS_A_PEDIR',
+      'UNIDADES_SUGERIDAS_A_PEDIR',
+      'INVERSION_ESTIMADA_PEN',
+      'PROXIMO_VENCIMIENTO_FEFO',
+    ]
+    const filas = reporte.sugerencias.map((s) =>
+      [
+        s.codigo_barras,
+        `"${String(s.nombre || '').replace(/"/g, '""')}"`,
+        `"${String(s.laboratorio || '-').replace(/"/g, '""')}"`,
+        s.estado_rotacion,
+        s.stock_actual_unidades,
+        s.stock_minimo_unidades,
+        s.demanda_predicha_15d,
+        s.dias_cobertura_actual,
+        s.cajas_sugeridas_compra,
+        s.cantidad_unidades_sugerida,
+        Number(s.inversion_estimada || 0).toFixed(2),
+        s.proximo_vencimiento_fefo || '-',
+      ].join(';')
+    )
+    return '\ufeff' + [encabezados.join(';'), ...filas].join('\r\n')
   },
 }

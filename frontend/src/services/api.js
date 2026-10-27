@@ -1,12 +1,28 @@
 import axios from 'axios'
 import { localDemoStore } from './localDemoStore'
 
+export const AUTH_TOKEN_KEY = 'botica_access_token'
+export const AUTH_USER_KEY = 'botica_usuario'
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
   timeout: 4000,
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+// Adjunta el token JWT en cada petición al Backend
+api.interceptors.request.use((config) => {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY)
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return config
 })
 
 function isNetworkOffline(error) {
@@ -32,7 +48,81 @@ export function getErrorMessage(error) {
 }
 
 // ============================================================================
-// 1. PRODUCTOS Y LECTOR DE CÓDIGO DE BARRAS USB (HID)
+// 0. SEGURIDAD Y AUTENTICACIÓN JWT
+// ============================================================================
+export const authApi = {
+  getStoredToken: () => {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_KEY)
+    } catch {
+      return null
+    }
+  },
+
+  getStoredUser: () => {
+    try {
+      const raw = localStorage.getItem(AUTH_USER_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  },
+
+  saveSession: (tokenResponse) => {
+    try {
+      if (tokenResponse?.access_token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, tokenResponse.access_token)
+      }
+      if (tokenResponse?.usuario) {
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(tokenResponse.usuario))
+      }
+    } catch {
+      // ignore storage errors
+    }
+  },
+
+  logout: () => {
+    try {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      localStorage.removeItem(AUTH_USER_KEY)
+    } catch {
+      // ignore storage errors
+    }
+  },
+
+  login: async ({ username, password }) => {
+    try {
+      const { data } = await api.post('/auth/login', {
+        username: String(username || '').trim(),
+        password: String(password || ''),
+      })
+      authApi.saveSession(data)
+      return data
+    } catch (err) {
+      if (isNetworkOffline(err)) {
+        const demoRes = localDemoStore.autenticar({ username, password })
+        authApi.saveSession(demoRes)
+        return demoRes
+      }
+      throw err
+    }
+  },
+
+  me: async () => {
+    try {
+      const { data } = await api.get('/auth/me')
+      return data
+    } catch (err) {
+      if (isNetworkOffline(err)) {
+        return authApi.getStoredUser()
+      }
+      throw err
+    }
+  },
+}
+
+// ============================================================================
+// 1. PRODUCTOS, SUSTITUTOS Y LECTOR DE CÓDIGO DE BARRAS USB (HID)
 // ============================================================================
 export const productosApi = {
   listar: async ({ buscar = '', skip = 0, limit = 100 } = {}) => {
@@ -64,6 +154,18 @@ export const productosApi = {
         const producto = localDemoStore.escanearBarcode(codigoBarras)
         const latencyMs = Math.max(4, Math.round(performance.now() - t0))
         return { producto, latencyMs }
+      }
+      throw err
+    }
+  },
+
+  buscarSustitutos: async (productoId) => {
+    try {
+      const { data } = await api.get(`/productos/${productoId}/sustitutos`)
+      return data
+    } catch (err) {
+      if (isNetworkOffline(err)) {
+        return localDemoStore.buscarSustitutos(productoId)
       }
       throw err
     }
@@ -232,6 +334,39 @@ export const mlApi = {
       }
       throw err
     }
+  },
+}
+
+// ============================================================================
+// 5. REPORTES GERENCIALES Y EXPORTACIÓN EXCEL (CSV CON BOM UTF-8)
+// ============================================================================
+export const reportesApi = {
+  descargarOrdenCompraExcel: async (soloCriticos = false) => {
+    let csvContent = ''
+    try {
+      const response = await api.get('/reportes/exportar/orden-compra-ml.csv', {
+        params: { solo_criticos: soloCriticos },
+        responseType: 'text',
+      })
+      csvContent = response.data
+    } catch (err) {
+      if (isNetworkOffline(err)) {
+        csvContent = localDemoStore.generarCsvOrdenCompraMl(soloCriticos)
+      } else {
+        throw err
+      }
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'orden_compra_sugerida_ml.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    return true
   },
 }
 
