@@ -14,6 +14,8 @@ import {
   Receipt,
   Sparkles,
   ShoppingBag,
+  ArrowRightLeft,
+  X,
 } from 'lucide-react'
 import { productosApi, posApi, getErrorMessage } from '../services/api'
 import { useBarcodeScanner, useKeyboardShortcuts } from '../hooks'
@@ -86,9 +88,15 @@ export function POSPage() {
   const [montoRecibido, setMontoRecibido] = useState('')
   const [procesandoVenta, setProcesandoVenta] = useState(false)
 
-  // Mensajes amigables
+  // Mensajes amigables y producto sin stock suficiente
   const [feedbackError, setFeedbackError] = useState(null)
   const [feedbackSuccess, setFeedbackSuccess] = useState(null)
+  const [productoSinStock, setProductoSinStock] = useState(null)
+
+  // Sugerencias de medicamentos sustitutos (Issue #15)
+  const [sustitutosOrigen, setSustitutosOrigen] = useState(null)
+  const [sustitutosLista, setSustitutosLista] = useState([])
+  const [loadingSustitutos, setLoadingSustitutos] = useState(false)
 
   // Comprobante emitido e historial reciente
   const [ventaEmitida, setVentaEmitida] = useState(null)
@@ -125,9 +133,26 @@ export function POSPage() {
     cargarDatosMostrador()
   }, [cargarDatosMostrador])
 
+  // Consultar medicamentos alternativos con el mismo principio activo (GET /api/v1/productos/{id}/sustitutos)
+  const verAlternativasSustitutos = useCallback(async (prod) => {
+    if (!prod?.id) return
+    setSustitutosOrigen(prod)
+    setLoadingSustitutos(true)
+    try {
+      const lista = await productosApi.buscarSustitutos(prod.id)
+      setSustitutosLista(Array.isArray(lista) ? lista : [])
+    } catch (err) {
+      setFeedbackError(getErrorMessage(err))
+      setSustitutosLista([])
+    } finally {
+      setLoadingSustitutos(false)
+    }
+  }, [])
+
   // Agregar o incrementar un medicamento en el pedido
   const agregarProductoAlCarrito = useCallback((productoData, presentacionInicial = null) => {
     setFeedbackError(null)
+    setProductoSinStock(null)
     const presentacionPorDefecto =
       presentacionInicial || (productoData.fraccionable ? 'UNIDAD' : 'CAJA')
 
@@ -164,12 +189,14 @@ export function POSPage() {
       const clean = String(codigo || '').trim()
       if (!clean) return
       setFeedbackError(null)
+      setProductoSinStock(null)
 
       try {
         const { producto } = await productosApi.escanearBarcode(clean)
         if (producto.stock_total_vigente <= 0) {
+          setProductoSinStock(producto)
           setFeedbackError(
-            `El medicamento "${producto.nombre}" no cuenta con stock disponible en este momento.`
+            `El medicamento "${producto.nombre}" tiene 0 unidades disponibles en este momento.`
           )
           return
         }
@@ -189,14 +216,22 @@ export function POSPage() {
 
   // Seleccionar un medicamento de la lista
   const seleccionarProductoCatalogo = async (prod) => {
+    setFeedbackError(null)
+    setProductoSinStock(null)
     try {
       const { producto } = await productosApi.escanearBarcode(prod.codigo_barras)
       if (producto.stock_total_vigente <= 0) {
+        setProductoSinStock(producto)
         setFeedbackError(`"${producto.nombre}" no tiene unidades disponibles para la venta.`)
         return
       }
       agregarProductoAlCarrito(producto, 'CAJA')
     } catch {
+      if (prod.stock_total_vigente !== undefined && prod.stock_total_vigente <= 0) {
+        setProductoSinStock(prod)
+        setFeedbackError(`"${prod.nombre}" no tiene unidades disponibles para la venta.`)
+        return
+      }
       agregarProductoAlCarrito(prod, 'CAJA')
     }
   }
@@ -234,6 +269,7 @@ export function POSPage() {
     setCarrito([])
     setMontoRecibido('')
     setFeedbackError(null)
+    setProductoSinStock(null)
   }, [])
 
   // Cálculos totales del pedido
@@ -274,6 +310,7 @@ export function POSPage() {
     setProcesandoVenta(true)
     setFeedbackError(null)
     setFeedbackSuccess(null)
+    setProductoSinStock(null)
 
     try {
       const payload = {
@@ -294,11 +331,29 @@ export function POSPage() {
       setMontoRecibido('')
       await cargarDatosMostrador(searchQuery)
     } catch (err) {
-      setFeedbackError(getErrorMessage(err))
+      const msg = getErrorMessage(err)
+      setFeedbackError(msg)
+      // Si el error es por falta de stock de algún medicamento en el carrito, ofrecer alternativas
+      const itemInsuficiente = resumenCarrito.items.find(
+        (it) =>
+          (it.producto.stock_total_vigente !== undefined &&
+            it.unidadesMinimas > it.producto.stock_total_vigente) ||
+          msg.toLowerCase().includes(it.producto.nombre.toLowerCase())
+      )
+      if (itemInsuficiente) {
+        setProductoSinStock(itemInsuficiente.producto)
+      }
     } finally {
       setProcesandoVenta(false)
     }
-  }, [carrito, procesandoVenta, metodoPago, cargarDatosMostrador, searchQuery])
+  }, [
+    carrito,
+    procesandoVenta,
+    metodoPago,
+    cargarDatosMostrador,
+    searchQuery,
+    resumenCarrito.items,
+  ])
 
   // Atajos discretos para agilidad en caja
   useKeyboardShortcuts({
@@ -330,7 +385,7 @@ export function POSPage() {
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Cálido y Guiado (Sin siglas técnicas como FEFO o HID) */}
+      {/* Encabezado Cálido y Guiado */}
       <div className="rounded-[14px] border border-[#e5e0d8] bg-canvas-white px-6 py-4 shadow-2xs">
         <h1 className="font-satoshi text-[28px] font-bold leading-tight text-midnight-ink">
           Atención y Venta en Mostrador
@@ -340,20 +395,35 @@ export function POSPage() {
         </p>
       </div>
 
-      {/* Alertas Amigables */}
+      {/* Alertas Amigables + Botón de Sustitutos cuando no alcanza el stock */}
       {feedbackError && (
-        <div className="flex items-center justify-between rounded-[12px] border border-[#fca5a5] bg-[#fee2e2] px-4 py-3 text-[14px] font-medium text-[#b91c1c] shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[#fca5a5] bg-[#fee2e2] px-4 py-3 text-[14px] font-medium text-[#b91c1c] shadow-2xs">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{feedbackError}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setFeedbackError(null)}
-            className="text-[12px] font-semibold underline"
-          >
-            Entendido
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {productoSinStock && (
+              <button
+                type="button"
+                onClick={() => verAlternativasSustitutos(productoSinStock)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[#0d9488] bg-[#f0fdfa] px-3.5 py-1 text-[12.5px] font-bold text-[#0f766e] shadow-2xs transition hover:bg-[#0d9488] hover:text-white"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                <span>Ver alternativas con el mismo principio activo</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackError(null)
+                setProductoSinStock(null)
+              }}
+              className="text-[12px] font-semibold underline"
+            >
+              Entendido
+            </button>
+          </div>
         </div>
       )}
 
@@ -370,6 +440,101 @@ export function POSPage() {
           >
             Cerrar
           </button>
+        </div>
+      )}
+
+      {/* Panel de Medicamentos Sustitutos Bioequivalentes (Issue #15) */}
+      {sustitutosOrigen && (
+        <div className="rounded-[14px] border-2 border-[#0d9488] bg-[#f0fdfa] p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#99f6e4] pb-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-[#0d9488] px-3 py-0.5 text-[11px] font-bold text-white">
+                <ArrowRightLeft className="h-3 w-3" />
+                <span>Alternativas Equivalentes Disponibles</span>
+              </div>
+              <h3 className="mt-1.5 text-[16px] font-bold text-midnight-ink">
+                Sustitutos para: {sustitutosOrigen.nombre}
+              </h3>
+              <p className="text-[12.5px] text-[#0f766e]">
+                Mismo principio activo ({sustitutosOrigen.principio_activo || 'Genérico'}) con stock disponible, ordenados del más económico al más caro:
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSustitutosOrigen(null)
+                setSustitutosLista([])
+              }}
+              className="inline-flex items-center gap-1 rounded-[8px] border border-[#99f6e4] bg-white px-2.5 py-1 text-[12px] font-semibold text-slate hover:bg-[#fee2e2] hover:text-[#b91c1c]"
+            >
+              <X className="h-3.5 w-3.5" />
+              Cerrar
+            </button>
+          </div>
+
+          {loadingSustitutos ? (
+            <p className="py-6 text-center text-[13px] font-medium text-[#0f766e]">
+              Buscando medicamentos con el mismo principio activo...
+            </p>
+          ) : sustitutosLista.length === 0 ? (
+            <p className="py-6 text-center text-[13px] font-medium text-slate">
+              No se encontraron otros medicamentos disponibles con el principio activo{' '}
+              <strong>{sustitutosOrigen.principio_activo || sustitutosOrigen.nombre}</strong>.
+            </p>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {sustitutosLista.map((alt, idx) => (
+                <div
+                  key={alt.id}
+                  className="flex flex-col justify-between rounded-[12px] border border-[#99f6e4] bg-white p-3.5 shadow-2xs"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="rounded-full bg-[#dcfce7] px-2.5 py-0.5 text-[10.5px] font-bold text-[#15803d]">
+                        {idx === 0 ? 'Más económico' : 'Alternativa'} · {alt.stock_total_vigente} unds disp.
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate">
+                        {alt.laboratorio || 'Laboratorio'}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-[14px] font-bold text-midnight-ink">
+                      {alt.nombre}
+                    </div>
+                    <div className="mt-0.5 text-[11.5px] text-slate">
+                      Principio activo: <strong className="text-[#0f766e]">{alt.principio_activo}</strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between border-t border-[#e5e0d8] pt-2.5">
+                    <div>
+                      <div className="font-geist-mono text-[15px] font-bold text-midnight-ink">
+                        Caja: S/ {Number(alt.precio_venta_caja).toFixed(2)}
+                      </div>
+                      {alt.precio_venta_unitario && (
+                        <div className="font-geist-mono text-[11px] font-semibold text-[#15803d]">
+                          Unidad: S/ {Number(alt.precio_venta_unitario).toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        agregarProductoAlCarrito(alt, 'CAJA')
+                        setSustitutosOrigen(null)
+                        setFeedbackSuccess(
+                          `Se agregó la alternativa "${alt.nombre}" al pedido del cliente.`
+                        )
+                      }}
+                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] bg-[#0d9488] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[#0f766e]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -445,7 +610,7 @@ export function POSPage() {
                     <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Caja</th>
                     <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Blíster</th>
                     <th className="whitespace-nowrap px-3 py-2.5 text-right">Por Unidad</th>
-                    <th className="whitespace-nowrap px-3.5 py-2.5 text-right">Agregar</th>
+                    <th className="whitespace-nowrap px-3.5 py-2.5 text-right">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#e5e0d8] text-[13px]">
@@ -462,48 +627,85 @@ export function POSPage() {
                       </td>
                     </tr>
                   ) : (
-                    catalogo.map((prod) => (
-                      <tr
-                        key={prod.id}
-                        className="group transition hover:bg-[#f0fdfa]/70"
-                      >
-                        <td className="px-3.5 py-3">
-                          <div className="font-bold text-midnight-ink">
-                            {prod.nombre}
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-slate">
-                            <span>{prod.principio_activo || 'Genérico'}</span>
-                            <span>· {prod.laboratorio || 'Laboratorio'}</span>
-                            <span className="font-semibold text-[#0d9488]">
-                              (Caja de {prod.unidades_por_caja} unds)
-                            </span>
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-bold text-midnight-ink">
-                          S/ {Number(prod.precio_venta_caja).toFixed(2)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#0f766e]">
-                          {prod.precio_venta_blister
-                            ? `S/ ${Number(prod.precio_venta_blister).toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#15803d]">
-                          {prod.precio_venta_unitario
-                            ? `S/ ${Number(prod.precio_venta_unitario).toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="whitespace-nowrap px-3.5 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => seleccionarProductoCatalogo(prod)}
-                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#99f6e4] bg-[#f0fdfa] px-3 py-1.5 text-[12px] font-semibold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Agregar
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    catalogo.map((prod) => {
+                      const sinStock =
+                        prod.stock_total_vigente !== undefined &&
+                        Number(prod.stock_total_vigente) <= 0
+
+                      return (
+                        <tr
+                          key={prod.id}
+                          className="group transition hover:bg-[#f0fdfa]/70"
+                        >
+                          <td className="px-3.5 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-midnight-ink">
+                                {prod.nombre}
+                              </span>
+                              {sinStock && (
+                                <span className="rounded-full bg-[#fee2e2] px-2 py-0.5 text-[10.5px] font-bold text-[#dc2626]">
+                                  Agotado (0 unds)
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11.5px] text-slate">
+                              <span>{prod.principio_activo || 'Genérico'}</span>
+                              <span>· {prod.laboratorio || 'Laboratorio'}</span>
+                              <span className="font-semibold text-[#0d9488]">
+                                (Caja de {prod.unidades_por_caja} unds)
+                              </span>
+                            </div>
+                            {sinStock && (
+                              <div className="mt-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => verAlternativasSustitutos(prod)}
+                                  className="inline-flex items-center gap-1 rounded-full border border-[#0d9488] bg-[#f0fdfa] px-2.5 py-0.5 text-[11px] font-bold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
+                                >
+                                  <ArrowRightLeft className="h-3 w-3" />
+                                  <span>Ver alternativas con el mismo principio activo</span>
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-bold text-midnight-ink">
+                            S/ {Number(prod.precio_venta_caja).toFixed(2)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#0f766e]">
+                            {prod.precio_venta_blister
+                              ? `S/ ${Number(prod.precio_venta_blister).toFixed(2)}`
+                              : '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 text-right font-geist-mono text-[13px] font-semibold text-[#15803d]">
+                            {prod.precio_venta_unitario
+                              ? `S/ ${Number(prod.precio_venta_unitario).toFixed(2)}`
+                              : '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-3.5 py-3 text-right">
+                            {sinStock ? (
+                              <button
+                                type="button"
+                                onClick={() => verAlternativasSustitutos(prod)}
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#f59e0b] bg-[#fffbeb] px-2.5 py-1.5 text-[11.5px] font-semibold text-[#b45309] transition hover:bg-[#f59e0b] hover:text-white"
+                                title="Ver alternativas con el mismo principio activo"
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5" />
+                                Alternativas
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => seleccionarProductoCatalogo(prod)}
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-[8px] border border-[#99f6e4] bg-[#f0fdfa] px-3 py-1.5 text-[12px] font-semibold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Agregar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -558,10 +760,18 @@ export function POSPage() {
               ) : (
                 resumenCarrito.items.map((item, idx) => {
                   const prod = item.producto
+                  const stockDisp = prod.stock_total_vigente
+                  const noAlcanzaStock =
+                    stockDisp !== undefined && item.unidadesMinimas > stockDisp
+
                   return (
                     <div
                       key={item.key}
-                      className="rounded-[12px] border border-[#e5e0d8] bg-[#faf8f5] p-3"
+                      className={`rounded-[12px] border p-3 ${
+                        noAlcanzaStock
+                          ? 'border-[#fca5a5] bg-[#fef2f2]'
+                          : 'border-[#e5e0d8] bg-[#faf8f5]'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -573,6 +783,21 @@ export function POSPage() {
                               <span className="whitespace-nowrap rounded-full border border-[#86efac] bg-[#dcfce7] px-2.5 py-0.5 font-semibold text-[#15803d]">
                                 Lote a entregar: {prod.lote_fefo_numero} (Vence: {prod.proximo_vencimiento})
                               </span>
+                            </div>
+                          )}
+                          {noAlcanzaStock && (
+                            <div className="mt-1.5 space-y-1">
+                              <p className="text-[11.5px] font-semibold text-[#b91c1c]">
+                                Stock insuficiente: pides {item.unidadesMinimas} unds y solo quedan {stockDisp} unds.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => verAlternativasSustitutos(prod)}
+                                className="inline-flex items-center gap-1 rounded-full border border-[#0d9488] bg-[#f0fdfa] px-2.5 py-0.5 text-[11px] font-bold text-[#0f766e] transition hover:bg-[#0d9488] hover:text-white"
+                              >
+                                <ArrowRightLeft className="h-3 w-3" />
+                                <span>Ver alternativas con el mismo principio activo</span>
+                              </button>
                             </div>
                           )}
                         </div>

@@ -13,8 +13,9 @@ import {
   Filter,
   BarChart3,
   PieChart,
+  Download,
 } from 'lucide-react'
-import { mlApi, getErrorMessage } from '../services/api'
+import { mlApi, reportesApi, getErrorMessage } from '../services/api'
 import { StatusBadge } from '../components'
 
 const ESTADO_BADGE_MAP = {
@@ -223,6 +224,7 @@ export function MLDashboardPage() {
   const [selectedSkuId, setSelectedSkuId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [error, setError] = useState(null)
   const [seedInfo, setSeedInfo] = useState(null)
 
@@ -267,6 +269,21 @@ export function MLDashboardPage() {
       setError(getErrorMessage(err))
     } finally {
       setSeeding(false)
+    }
+  }
+
+  const handleExportarExcel = async () => {
+    setExporting(true)
+    setError(null)
+    try {
+      await reportesApi.descargarOrdenCompraExcel(soloCriticos)
+      setSeedInfo(
+        '¡Archivo "orden_compra_sugerida_ml.csv" descargado! Puedes abrirlo directamente en Microsoft Excel para enviarlo a tu droguería.'
+      )
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -346,6 +363,18 @@ export function MLDashboardPage() {
             <DatabaseZap className="h-4 w-4 text-[#0d9488]" />
             <span>
               {seeding ? 'Cargando ejemplo...' : 'Cargar Datos de Ejemplo'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportarExcel}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 whitespace-nowrap rounded-[10px] border border-[#86efac] bg-[#f0fdf4] px-4 py-2 text-[13.5px] font-semibold text-[#15803d] shadow-2xs transition hover:bg-[#16a34a] hover:text-white disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            <span>
+              {exporting ? 'Descargando...' : 'Exportar Pedido a Excel'}
             </span>
           </button>
 
@@ -611,22 +640,24 @@ export function MLDashboardPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setSoloCriticos((prev) => !prev)}
-            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[12.5px] font-semibold transition ${
-              soloCriticos
-                ? 'border-[#0d9488] bg-[#0d9488] text-white shadow-2xs'
-                : 'border-[#e5e0d8] bg-[#faf8f5] text-midnight-ink hover:bg-[#f0fdfa]'
-            }`}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            <span>
-              {soloCriticos
-                ? 'Mostrando: Solo los que requieren compra'
-                : 'Ver solo los que requieren compra'}
-            </span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSoloCriticos((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[12.5px] font-semibold transition ${
+                soloCriticos
+                  ? 'border-[#0d9488] bg-[#0d9488] text-white shadow-2xs'
+                  : 'border-[#e5e0d8] bg-[#faf8f5] text-midnight-ink hover:bg-[#f0fdfa]'
+              }`}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              <span>
+                {soloCriticos
+                  ? 'Mostrando: Solo los que requieren compra'
+                  : 'Ver solo los que requieren compra'}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 overflow-x-auto rounded-[10px] border border-[#e5e0d8]">
